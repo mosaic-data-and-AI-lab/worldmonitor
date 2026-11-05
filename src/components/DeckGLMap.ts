@@ -133,7 +133,21 @@ import { MapPopup, type PopupType } from './MapPopup';
 import { renderMilitaryVesselTooltipHtml } from './deckgl-tooltip-renderers';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { ChinaCorridorControlTower } from '../../shared/china-corridor-control-towers';
-import type { GeoEvent } from '../../shared/geo-events';
+import type { GeoEvent, GeoEventSource } from '../../shared/geo-events';
+import { binEvents, densityStep, resolutionForZoom, type DensityCell } from '@/services/event-density';
+
+type DensityCellWithPolygon = DensityCell & { polygon: [number, number][] };
+
+/** Yellow → dark red (ColorBrewer YlOrRd), more opaque as density rises. */
+const DENSITY_COLORS: [number, number, number, number][] = [
+  [254, 217, 118, 90],
+  [254, 178, 76, 120],
+  [253, 141, 60, 150],
+  [240, 59, 32, 175],
+  [189, 0, 38, 200],
+];
+
+const DENSITY_SOURCE_LABELS: Record<GeoEventSource, string> = { ucdp: 'UCDP', acled: 'ACLED', gdelt: 'GDELT', rss: 'News' };
 import {
   projectChinaCorridorOverlay,
   type ChinaCorridorOverlayProjection,
@@ -611,6 +625,15 @@ export class DeckGLMap {
   private ucdpEvents: UcdpGeoEvent[] = [];
   /** Combined UCDP + ACLED + unrest events for the hotspot density layer. */
   private densityEvents: GeoEvent[] = [];
+  /** h3-js, loaded on first use of the density layer (same lazy pattern as GPS jamming). */
+  private densityH3: typeof import('h3-js') | null = null;
+  private densityH3Loading = false;
+  /** Cells for the current events, time range and hexagon size; rebuilt only when one of those changes. */
+  private densityCache: {
+    events: GeoEvent[]; range: TimeRange; minute: number; res: number;
+    cells: DensityCellWithPolygon[]; maxCount: number;
+  } | null = null;
+  private densityPolygons = new Map<string, [number, number][]>();
   private displacementFlows: DisplacementFlow[] = [];
   private gpsJammingHexes: GpsJamHexWithPolygon[] = [];
   private gpsJammingLoadSeq = 0;
@@ -1926,6 +1949,14 @@ export class DeckGLMap {
       layers.push(this.createConflictZonesLayer(
         this.resolveHeavyData('conflict', () => this.buildConflictZoneGeoJson(), deferHeavy, this.emptyHeavyData),
       ));
+    }
+
+    // Hotspot density — hexagons under every point layer so the markers stay readable.
+    if (mapLayers.eventDensity && this.densityEvents.length > 0) {
+      const density = this.getDensityCells();
+      if (density && density.cells.length > 0) {
+        layers.push(this.createEventDensityLayer(density.cells, density.maxCount));
+      }
     }
 
 
@@ -4885,6 +4916,14 @@ export class DeckGLMap {
         return { html: `<div class="deckgl-tooltip"><strong>AIS ${text(obj.type || t('components.deckgl.tooltip.disruption'))}</strong><br/>${text(obj.severity)} ${t('popups.severity')}<br/>${text(obj.description)}</div>` };
       case 'gps-jamming-layer':
         return { html: `<div class="deckgl-tooltip"><strong>GPS Jamming</strong><br/>${text(obj.level)} · aircraft affected: ${Number(obj.pct).toFixed(1)}%<br/>H3: ${text(obj.h3)}</div>` };
+      case 'event-density-layer': {
+        // Per-source counts make it visible when a hotspot rests on GDELT alone.
+        const sources = Object.entries(obj.bySource ?? {})
+          .map(([source, n]) => `${text(DENSITY_SOURCE_LABELS[source as GeoEventSource] ?? source)} ${Number(n)}`)
+          .join(' · ');
+        const deaths = Number(obj.fatalities) || 0;
+        return { html: `<div class="deckgl-tooltip"><strong>${Number(obj.count)} event${Number(obj.count) === 1 ? '' : 's'}</strong><br/>${sources}<br/>${deaths} death${deaths === 1 ? '' : 's'}${obj.topCountry ? ` · mostly ${text(obj.topCountry)}` : ''}</div>` };
+      }
       case 'cable-advisories-layer': {
         const cableName = UNDERSEA_CABLES.find(c => c.id === obj.cableId)?.name || obj.cableId;
         return { html: `<div class="deckgl-tooltip"><strong>${text(cableName)}</strong><br/>${text(obj.severity || t('components.deckgl.tooltip.advisory'))}<br/>${text(obj.description)}</div>` };
@@ -5913,6 +5952,8 @@ export class DeckGLMap {
               { shape: shapes.circle('rgb(231, 76, 60)'), label: t('components.deckgl.legend.diseaseAlert'), layerKey: 'diseaseOutbreaks' },
               { shape: shapes.circle('rgb(230, 126, 34)'), label: t('components.deckgl.legend.diseaseWarning'), layerKey: 'diseaseOutbreaks' },
               { shape: shapes.circle('rgb(241, 196, 15)'), label: t('components.deckgl.legend.diseaseWatch'), layerKey: 'diseaseOutbreaks' },
+              { shape: shapes.hexagon('rgb(254, 217, 118)'), label: 'Event density: fewer', layerKey: 'eventDensity' },
+              { shape: shapes.hexagon('rgb(189, 0, 38)'), label: 'Event density: more', layerKey: 'eventDensity' },
               ...resilienceLegendItems,
             ];
 
@@ -6932,6 +6973,73 @@ export class DeckGLMap {
   public setDensityEvents(events: GeoEvent[]): void {
     this.densityEvents = events;
     this.render();
+  }
+
+  /**
+   * Bins the density events for the current time range and zoom. Returns null
+   * until h3-js has loaded (the load re-renders). Re-bins only when the events,
+   * the time range, the hexagon size or the minute (relative time cutoff) change,
+   * so the per-frame calls during a zoom are cache hits.
+   */
+  private getDensityCells(): { cells: DensityCellWithPolygon[]; maxCount: number } | null {
+    const h3 = this.densityH3;
+    if (!h3) {
+      if (!this.densityH3Loading) {
+        this.densityH3Loading = true;
+        import('h3-js')
+          .then((mod) => { this.densityH3 = mod; this.render(); })
+          .catch((err) => {
+            this.densityH3Loading = false;
+            console.warn('[DeckGLMap] failed to load h3-js for event density:', (err as Error)?.message);
+          });
+      }
+      return null;
+    }
+    const res = resolutionForZoom(this.maplibreMap?.getZoom() ?? this.state.zoom);
+    const range = this.state.timeRange;
+    const minute = Math.floor(Date.now() / 60000);
+    const cached = this.densityCache;
+    if (cached && cached.events === this.densityEvents && cached.range === range && cached.minute === minute && cached.res === res) {
+      return cached;
+    }
+    const visible = this.filterByTime(this.densityEvents, (e) => e.time);
+    const cells = binEvents(visible, res, h3.latLngToCell)
+      .map((cell) => ({ ...cell, polygon: this.densityPolygon(h3, cell.h3) }));
+    this.densityCache = { events: this.densityEvents, range, minute, res, cells, maxCount: cells[0]?.count ?? 0 };
+    return this.densityCache;
+  }
+
+  private densityPolygon(h3: typeof import('h3-js'), cell: string): [number, number][] {
+    let polygon = this.densityPolygons.get(cell);
+    if (!polygon) {
+      polygon = h3.cellToBoundary(cell, true) as [number, number][];
+      // A hexagon straddling the antimeridian comes back spanning the whole
+      // map; shift its western points east so it draws as one small cell.
+      const lons = polygon.map(([lon]) => lon);
+      if (Math.max(...lons) - Math.min(...lons) > 180) {
+        polygon = polygon.map(([lon, lat]) => [lon < 0 ? lon + 360 : lon, lat]);
+      }
+      if (this.densityPolygons.size > 20000) this.densityPolygons.clear();
+      this.densityPolygons.set(cell, polygon);
+    }
+    return polygon;
+  }
+
+  private createEventDensityLayer(cells: DensityCellWithPolygon[], maxCount: number): PolygonLayer<DensityCellWithPolygon> {
+    return new PolygonLayer<DensityCellWithPolygon>({
+      id: 'event-density-layer',
+      data: cells,
+      getPolygon: (d) => d.polygon,
+      getFillColor: (d) => DENSITY_COLORS[densityStep(d.count, maxCount, DENSITY_COLORS.length)]!,
+      filled: true,
+      stroked: true,
+      extruded: false,
+      getLineColor: [255, 255, 255, 40],
+      getLineWidth: 1,
+      lineWidthMinPixels: 1,
+      pickable: true,
+      updateTriggers: { getFillColor: [maxCount] },
+    });
   }
 
   public setDisplacementFlows(flows: DisplacementFlow[]): void {

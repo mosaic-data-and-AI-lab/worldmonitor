@@ -50,6 +50,10 @@ These must be set before `docker compose up -d`, or one of the containers will e
 
 ## 🔑 API Keys
 
+**Recommended: put every key in `.env`** (one `KEY=value` per line, quote values containing spaces or `$`). It is the one place every consumer reads: the `worldmonitor` and `ais-relay` containers load it via `env_file`, and `scripts/run-seeders.sh` sources it for the host-side seeders.
+
+The `docker-compose.override.yml` route below still works for the containers, but the seeder runner only picks up an allowlisted subset of its keys and skips any line containing `#`, including the trailing comments in the template below.
+
 Create a `docker-compose.override.yml` to inject your keys. This file is **gitignored** — your secrets stay local.
 
 ```yaml

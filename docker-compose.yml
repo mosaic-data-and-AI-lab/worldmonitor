@@ -20,6 +20,11 @@ services:
     container_name: worldmonitor
     ports:
       - "${WM_PORT:-3000}:8080"
+    # .env is the one place for keys: every entry in it reaches this container,
+    # and scripts/run-seeders.sh sources the same file for the host seeders.
+    # The explicit `environment:` entries below win over env_file, so values
+    # that must differ inside the stack (the Redis REST URL) stay pinned.
+    env_file: .env
     environment:
       UPSTASH_REDIS_REST_URL: "http://redis-rest:80"
       UPSTASH_REDIS_REST_TOKEN: "${REDIS_TOKEN:?REDIS_TOKEN required — generate with: openssl rand -hex 32}"
@@ -81,6 +86,8 @@ services:
       dockerfile: Dockerfile.relay
     image: worldmonitor-ais-relay:latest
     container_name: worldmonitor-ais-relay
+    # Same contract as the worldmonitor service: keys come from .env.
+    env_file: .env
     environment:
       RELAY_SHARED_SECRET: "${RELAY_SHARED_SECRET:?RELAY_SHARED_SECRET required — generate with: openssl rand -hex 32}"
       AISSTREAM_API_KEY: "${AISSTREAM_API_KEY:-}"

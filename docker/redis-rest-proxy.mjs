@@ -13,6 +13,7 @@
  *   REDIS_URL  - Redis connection string (default: redis://redis:6379)
  *   SRH_TOKEN  - Bearer token for auth (default: none)
  *   PORT       - Listen port (default: 80)
+ *   MAX_BODY_BYTES - Request body cap (default: 32 MB)
  */
 
 import http from 'node:http';
@@ -78,19 +79,38 @@ async function runCommand(args) {
   return client.sendCommand([cmd, ...cmdArgs.map(String)]);
 }
 
-const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
+// Request bodies are capped so a client can't make the proxy buffer without
+// bound, but the cap has to fit what seeders write through Upstash, which
+// accepts multi-megabyte values: the GDELT materializer state alone is ~3 MB on
+// a cold start and ~8 MB at its 5,000-record GKG cap. The old 1 MB cap reset
+// that write ("fetch failed: other side closed"), so the cursor and the 24h
+// rolling windows were never saved.
+const DEFAULT_MAX_BODY_BYTES = 32 * 1024 * 1024;
 
-async function readBody(req) {
+function parseBodyLimit(raw) {
+  const n = Number(raw);
+  return Number.isSafeInteger(n) && n > 0 ? n : DEFAULT_MAX_BODY_BYTES;
+}
+
+const MAX_BODY_BYTES = parseBodyLimit(process.env.MAX_BODY_BYTES);
+
+class BodyTooLargeError extends Error {
+  constructor(limit) {
+    super(`Request body too large (limit ${limit} bytes)`);
+    this.status = 413;
+  }
+}
+
+async function readBody(req, limit = MAX_BODY_BYTES) {
   const chunks = [];
   let totalLength = 0;
   for await (const chunk of req) {
     totalLength += chunk.length;
-    if (totalLength > MAX_BODY_BYTES) {
-      req.destroy();
-      throw new Error('Request body too large');
-    }
-    chunks.push(chunk);
+    // Past the limit, stop buffering but keep draining, so the client gets a
+    // readable 413 instead of a reset socket.
+    if (totalLength <= limit) chunks.push(chunk);
   }
+  if (totalLength > limit) throw new BodyTooLargeError(limit);
   return Buffer.concat(chunks).toString();
 }
 
@@ -197,7 +217,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(404);
     res.end(JSON.stringify({ error: 'Not found' }));
   } catch (err) {
-    res.writeHead(500);
+    res.writeHead(err.status || 500);
     res.end(JSON.stringify({ error: err.message }));
   }
 });

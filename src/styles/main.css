@@ -11244,6 +11244,38 @@ a.prediction-link:hover {
   border-bottom: none;
 }
 
+/* Hotspot density popup: title says what happened, one quiet line for the rest */
+.cluster-list .density-event {
+  padding: 6px 0;
+}
+
+.density-event-title {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.density-event-detail {
+  margin-top: 1px;
+  color: var(--text-secondary);
+}
+
+.density-event-meta {
+  margin-top: 2px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+}
+
+.density-overview {
+  margin: 6px 0 2px;
+}
+
+.cluster-note {
+  margin-top: 6px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  font-style: italic;
+  color: var(--text-dim);
+}
+
 .cluster-list .cluster-item.faang {
   color: var(--status-live);
 }

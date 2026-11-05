@@ -34,6 +34,13 @@ export interface GeoEvent {
   fatalities: number;
   actors: string[];
   title?: string;
+  /**
+   * Links to the original reports (http/https only). GDELT unrest records carry
+   * article URLs; ACLED and UCDP publish outlet names, not links.
+   */
+  urls?: string[];
+  /** Outlet names when the feed has no link (ACLED `source`, UCDP `source_original`). */
+  sourceName?: string;
 }
 
 /** The fields read from a UCDP GED event (`UcdpGeoEvent` in src/types). */
@@ -47,6 +54,7 @@ export interface UcdpEventInput {
   side_b: string;
   deaths_best: number;
   type_of_violence: string;
+  source_original?: string;
 }
 
 /** The fields read from an ACLED-endpoint event (`ConflictEvent` in src/services/conflict). */
@@ -60,6 +68,7 @@ export interface ConflictEventInput {
   time: Date | number | string;
   fatalities: number;
   actors: string[];
+  source?: string;
 }
 
 /** The fields read from an unrest event (`SocialUnrestEvent` in src/types). */
@@ -74,7 +83,18 @@ export interface UnrestEventInput {
   time: Date | number | string;
   fatalities?: number;
   actors?: string[];
+  sourceUrls?: string[];
   sourceType: 'acled' | 'gdelt' | 'rss';
+}
+
+/** Keeps http(s) links only, de-duplicated, in feed order. */
+function webLinks(urls: readonly string[] | undefined): string[] {
+  const out: string[] = [];
+  for (const raw of urls ?? []) {
+    const url = typeof raw === 'string' ? raw.trim() : '';
+    if (/^https?:\/\//i.test(url) && !out.includes(url)) out.push(url);
+  }
+  return out;
 }
 
 function toMs(t: Date | number | string): number {
@@ -105,6 +125,7 @@ export function fromUcdp(e: UcdpEventInput): GeoEvent | null {
     country: e.country,
     fatalities: e.deaths_best || 0,
     actors: [e.side_a, e.side_b].filter(Boolean),
+    ...(e.source_original?.trim() ? { sourceName: e.source_original.trim() } : {}),
   };
 }
 
@@ -129,12 +150,14 @@ export function fromConflict(e: ConflictEventInput): GeoEvent | null {
     ...(e.region ? { region: e.region } : {}),
     fatalities: e.fatalities || 0,
     actors: e.actors ?? [],
+    ...(e.source?.trim() ? { sourceName: e.source.trim() } : {}),
   };
 }
 
 export function fromUnrest(e: UnrestEventInput): GeoEvent | null {
   const time = toMs(e.time);
   if (!isUsablePoint(e.lat, e.lon) || !Number.isFinite(time)) return null;
+  const urls = webLinks(e.sourceUrls);
   return {
     id: `unrest:${e.id}`,
     source: e.sourceType,
@@ -147,6 +170,7 @@ export function fromUnrest(e: UnrestEventInput): GeoEvent | null {
     fatalities: e.fatalities ?? 0,
     actors: e.actors ?? [],
     ...(e.title ? { title: e.title } : {}),
+    ...(urls.length > 0 ? { urls } : {}),
   };
 }
 

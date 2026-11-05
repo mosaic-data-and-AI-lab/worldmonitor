@@ -103,6 +103,22 @@ describe('geo-events converters', () => {
     assert.equal(fromUnrest({ ...unrest, time: new Date('not a date') }), null);
   });
 
+  it('keeps unrest source links (http/https only, de-duplicated) so a protest or riot can be traced', () => {
+    const e = fromUnrest({
+      ...unrest,
+      eventType: 'riot',
+      sourceUrls: ['https://a.example/riot', ' https://a.example/riot ', 'javascript:alert(1)', 'http://b.example/x', ''],
+    });
+    assert.deepEqual(e?.urls, ['https://a.example/riot', 'http://b.example/x']);
+    assert.equal('urls' in (fromUnrest(unrest) ?? {}), false, 'no links → no urls field');
+  });
+
+  it('keeps outlet names from UCDP and ACLED, which publish no links', () => {
+    assert.equal(fromUcdp({ ...ucdp, source_original: 'Reuters; Premium Times' })?.sourceName, 'Reuters; Premium Times');
+    assert.equal(fromConflict({ ...acledConflict, source: 'Daily Trust' })?.sourceName, 'Daily Trust');
+    assert.equal('sourceName' in (fromUcdp({ ...ucdp, source_original: '  ' }) ?? {}), false);
+  });
+
   it('toGeoEvents keeps order and skips dropped events', () => {
     const events = toGeoEvents([ucdp, { ...ucdp, id: 'bad', latitude: 0, longitude: 0 }, { ...ucdp, id: '2' }], fromUcdp);
     assert.deepEqual(events.map((e) => e.id), ['ucdp:512345', 'ucdp:2']);

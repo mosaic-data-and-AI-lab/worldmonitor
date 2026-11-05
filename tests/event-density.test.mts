@@ -51,6 +51,16 @@ describe('binEvents', () => {
     assert.equal(binEvents([ev({ ...near, country: 'Niger' }), ev({ ...near, country: 'Chad' })], 2, latLngToCell)[0].topCountry, 'Chad');
   });
 
+  it('keeps the events of each cell, newest first, for the click-through popup', () => {
+    const cells = binEvents([
+      ev({ id: 'old', time: 1_000 }),
+      ev({ id: 'new', time: 3_000, urls: ['https://a.example/x'] }),
+      ev({ id: 'mid', time: 2_000 }),
+    ], 3, latLngToCell);
+    assert.deepEqual(cells[0].events.map((e) => e.id), ['new', 'mid', 'old']);
+    assert.deepEqual(cells[0].events[0].urls, ['https://a.example/x']);
+  });
+
   it('a coarser resolution merges what a finer one keeps apart', () => {
     const pair = [ev({ lat: 11.85, lon: 13.16 }), ev({ lat: 12.4, lon: 13.6 })];
     assert.equal(binEvents(pair, 5, latLngToCell).length, 2);

@@ -17,6 +17,8 @@ export interface DensityCell {
   bySource: Partial<Record<GeoEventSource, number>>;
   /** The country with the most events in this cell. */
   topCountry: string;
+  /** The events in this cell, newest first, so a click can list them with their source links. */
+  events: GeoEvent[];
 }
 
 /**
@@ -38,11 +40,12 @@ export function binEvents(events: readonly GeoEvent[], res: number, toCell: LatL
     const h3 = toCell(e.lat, e.lon, res);
     let entry = cells.get(h3);
     if (!entry) {
-      entry = { cell: { h3, count: 0, fatalities: 0, bySource: {}, topCountry: '' }, countries: new Map() };
+      entry = { cell: { h3, count: 0, fatalities: 0, bySource: {}, topCountry: '', events: [] }, countries: new Map() };
       cells.set(h3, entry);
     }
     const { cell, countries } = entry;
     cell.count += 1;
+    cell.events.push(e);
     cell.fatalities += e.fatalities;
     cell.bySource[e.source] = (cell.bySource[e.source] ?? 0) + 1;
     if (e.country) countries.set(e.country, (countries.get(e.country) ?? 0) + 1);
@@ -56,6 +59,7 @@ export function binEvents(events: readonly GeoEvent[], res: number, toCell: LatL
       if (n > bestCount || (n === bestCount && country < best)) { best = country; bestCount = n; }
     }
     cell.topCountry = best;
+    cell.events.sort((a, b) => b.time - a.time);
     out.push(cell);
   }
   return out.sort((a, b) => b.count - a.count || (a.h3 < b.h3 ? -1 : a.h3 > b.h3 ? 1 : 0));

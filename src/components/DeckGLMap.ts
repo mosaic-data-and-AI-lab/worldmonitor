@@ -4922,7 +4922,7 @@ export class DeckGLMap {
           .map(([source, n]) => `${text(DENSITY_SOURCE_LABELS[source as GeoEventSource] ?? source)} ${Number(n)}`)
           .join(' · ');
         const deaths = Number(obj.fatalities) || 0;
-        return { html: `<div class="deckgl-tooltip"><strong>${Number(obj.count)} event${Number(obj.count) === 1 ? '' : 's'}</strong><br/>${sources}<br/>${deaths} death${deaths === 1 ? '' : 's'}${obj.topCountry ? ` · mostly ${text(obj.topCountry)}` : ''}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${Number(obj.count)} event${Number(obj.count) === 1 ? '' : 's'}</strong><br/>${sources}<br/>${deaths} death${deaths === 1 ? '' : 's'}${obj.topCountry ? ` · mostly ${text(obj.topCountry)}` : ''}<br/><em>Click for events and sources</em></div>` };
       }
       case 'cable-advisories-layer': {
         const cableName = UNDERSEA_CABLES.find(c => c.id === obj.cableId)?.name || obj.cableId;
@@ -5281,6 +5281,7 @@ export class DeckGLMap {
       'minerals-layer': 'mineral',
       'ais-disruptions-layer': 'ais',
       'gps-jamming-layer': 'gpsJamming',
+      'event-density-layer': 'eventDensity',
       'cable-advisories-layer': 'cable-advisory',
       'repair-ships-layer': 'repair-ship',
     };

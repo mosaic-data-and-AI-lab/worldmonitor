@@ -27,6 +27,7 @@ import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 import { renderPopupSourceLinks } from './map-popup-source-links';
+import type { DensityCell } from '@/services/event-density';
 import { overlayHistory, type OverlayCloseOrigin, type OverlayOpenHandle } from '@/utils/overlay-history';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
@@ -103,7 +104,7 @@ function fmtDelayMin(min: number | undefined): string {
   return `<span style="color:${min > 0 ? '#f97316' : '#22c55e'};font-size:calc(10px * var(--wm-panel-effective-scale, 1));margin-left:3px">${min > 0 ? '+' : ''}${min}m</span>`;
 }
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'eventDensity' | 'radiation';
 
 interface TechEventPopupData {
   id: string;
@@ -232,7 +233,7 @@ interface DatacenterClusterData {
 
 interface PopupData {
   type: PopupType;
-  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation;
+  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | DensityCell | RadiationObservation;
   relatedNews?: NewsItem[];
   x: number;
   y: number;
@@ -827,6 +828,8 @@ export class MapPopup {
         return this.renderIranEventPopup(data.data as IranEventPopupData);
       case 'gpsJamming':
         return this.renderGpsJammingPopup(data.data as GpsJammingPopupData);
+      case 'eventDensity':
+        return this.renderEventDensityPopup(data.data as DensityCell);
       case 'radiation':
         return this.renderRadiationPopup(data.data as RadiationObservation);
       default:
@@ -3663,6 +3666,68 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
             <span class="stat-value" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1))">${escapeHtml(data.h3)}</span>
           </div>
         </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Hotspot density cell: the events behind the hexagon, newest first, each
+   * linked to its original report when the feed gives one (GDELT unrest
+   * articles). ACLED and UCDP publish outlet names only, shown as text.
+   */
+  private renderEventDensityPopup(cell: DensityCell): string {
+    const sourceLabels: Record<string, string> = { ucdp: 'UCDP', acled: 'ACLED', gdelt: 'GDELT', rss: 'News' };
+    const kindIcon = (kind: string): string => {
+      const k = kind.toLowerCase();
+      if (k.includes('riot')) return '🔥';
+      if (k.includes('strike')) return '✊';
+      if (k.includes('protest') || k.includes('demonstration')) return '📢';
+      return '⚔️';
+    };
+    const kindLabel = (kind: string): string => kind
+      .replace(/^UNREST_EVENT_TYPE_/i, '')
+      .replace(/[_-]+/g, ' ')
+      .toLowerCase();
+    const limit = 15;
+    const events = cell.events ?? [];
+    const items = events.slice(0, limit).map((e) => {
+      const date = new Date(e.time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      const place = [e.region, e.country].filter(Boolean).map((p) => escapeHtml(String(p))).join(', ');
+      const text = e.title ? escapeHtml(e.title.length > 70 ? `${e.title.slice(0, 70)}…` : e.title) : escapeHtml(kindLabel(e.kind));
+      const deaths = e.fatalities > 0 ? ` • 💀 ${e.fatalities}` : '';
+      const links = (e.urls ?? [])
+        .map((url) => sanitizeUrl(url))
+        .filter((url): url is string => Boolean(url))
+        .slice(0, 3)
+        .map((url) => {
+          let host = '';
+          try { host = new URL(url).hostname.replace(/^www\./, ''); } catch { host = t('popups.source'); }
+          return `<a class="popup-link cluster-source-link" href="${url}" target="_blank" rel="noopener noreferrer nofollow">${escapeHtml(host)} →</a>`;
+        })
+        .join(' ');
+      const outlet = !links && e.sourceName
+        ? ` <span class="cluster-source-name">${escapeHtml(e.sourceName.length > 60 ? `${e.sourceName.slice(0, 60)}…` : e.sourceName)}</span>`
+        : '';
+      return `<li class="cluster-item">${kindIcon(e.kind)} ${escapeHtml(date)} • ${escapeHtml(sourceLabels[e.source] ?? e.source)}${place ? ` • ${place}` : ''}${deaths}<br/>${text}${links ? `<br/>${links}` : ''}${outlet}</li>`;
+    }).join('');
+    const more = events.length > limit ? `<li class="cluster-more">+${events.length - limit} ${t('popups.moreEvents')}</li>` : '';
+    const bySource = Object.entries(cell.bySource ?? {})
+      .map(([source, n]) => `<span class="summary-item">${escapeHtml(sourceLabels[source] ?? source)} ${Number(n)}</span>`)
+      .join('');
+    const deaths = Number(cell.fatalities) || 0;
+
+    return `
+      <div class="popup-header protest ${cell.count >= 10 ? 'high' : 'medium'} cluster">
+        <span class="popup-title">⬢ ${escapeHtml(cell.topCountry || 'Event density')}</span>
+        <span class="popup-badge">${Number(cell.count)} ${t('popups.events').toUpperCase()}</span>
+        <button class="popup-close" aria-label="Close">×</button>
+      </div>
+      <div class="popup-body cluster-popup">
+        <div class="cluster-summary">
+          ${bySource}
+          ${deaths > 0 ? `<span class="summary-item fatalities">💀 ${deaths} ${t('popups.fatalities')}</span>` : ''}
+        </div>
+        <ul class="cluster-list">${items}${more}</ul>
       </div>
     `;
   }

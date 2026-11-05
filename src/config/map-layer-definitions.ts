@@ -128,6 +128,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   storageFacilities:        def('storageFacilities',        '&#127959;', 'storageFacilities',        'Storage Facilities', ['flat'], undefined, true),
   fuelShortages:            def('fuelShortages',            '&#9881;',   'fuelShortages',            'Fuel Shortages', ['flat'], undefined, true),
   liveTankers:              def('liveTankers',              '&#128674;', 'liveTankers',              'Live Tanker Positions', ['flat'], undefined, true),
+  eventDensity:             def('eventDensity',             '&#11042;',  'eventDensity',             'Event Density', ['flat'], undefined, true),
 };
 
 export const V1_LAYER_EXPLANATION_KEYS = [

@@ -70,7 +70,7 @@ export const LOB_PANELS: Record<LobId, LobSelection> = {
 export const LOB_LAYERS: Record<LobId, LobSelection<keyof MapLayers>> = {
   'political-violence': {
     on: ['hotspots', 'conflicts', 'bases', 'cables', 'pipelines', 'military', 'protests', 'ucdpEvents', 'gpsJamming', 'ciiChoropleth'],
-    avail: ['iranAttacks', 'nuclear', 'irradiators', 'radiationWatch', 'satellites', 'ais', 'tradeRoutes', 'flights', 'displacement', 'outages', 'cyberThreats', 'waterways', 'minerals', 'resilienceScore', 'sanctions', 'miningSites', 'commodityPorts', 'webcams', 'storageFacilities', 'fuelShortages', 'liveTankers'],
+    avail: ['iranAttacks', 'nuclear', 'irradiators', 'radiationWatch', 'satellites', 'ais', 'tradeRoutes', 'flights', 'eventDensity', 'displacement', 'outages', 'cyberThreats', 'waterways', 'minerals', 'resilienceScore', 'sanctions', 'miningSites', 'commodityPorts', 'webcams', 'storageFacilities', 'fuelShortages', 'liveTankers'],
   },
   'cyber': {
     on: ['cables', 'datacenters', 'outages', 'cyberThreats', 'gpsJamming', 'cloudRegions'],
@@ -102,6 +102,6 @@ export const LOB_LAYERS: Record<LobId, LobSelection<keyof MapLayers>> = {
   },
   'all-lines': {
     on: [],
-    avail: ['iranAttacks', 'hotspots', 'conflicts', 'bases', 'nuclear', 'irradiators', 'radiationWatch', 'spaceports', 'satellites', 'cables', 'pipelines', 'datacenters', 'military', 'ais', 'tradeRoutes', 'flights', 'protests', 'ucdpEvents', 'displacement', 'climate', 'weather', 'outages', 'cyberThreats', 'natural', 'fires', 'waterways', 'economic', 'minerals', 'gpsJamming', 'ciiChoropleth', 'resilienceScore', 'dayNight', 'sanctions', 'startupHubs', 'techHQs', 'accelerators', 'cloudRegions', 'techEvents', 'stockExchanges', 'financialCenters', 'centralBanks', 'commodityHubs', 'gulfInvestments', 'positiveEvents', 'kindness', 'happiness', 'speciesRecovery', 'renewableInstallations', 'miningSites', 'processingPlants', 'commodityPorts', 'webcams', 'diseaseOutbreaks', 'storageFacilities', 'fuelShortages', 'liveTankers'],
+    avail: ['iranAttacks', 'hotspots', 'conflicts', 'bases', 'nuclear', 'irradiators', 'radiationWatch', 'spaceports', 'satellites', 'cables', 'pipelines', 'datacenters', 'military', 'ais', 'tradeRoutes', 'flights', 'protests', 'ucdpEvents', 'eventDensity', 'displacement', 'climate', 'weather', 'outages', 'cyberThreats', 'natural', 'fires', 'waterways', 'economic', 'minerals', 'gpsJamming', 'ciiChoropleth', 'resilienceScore', 'dayNight', 'sanctions', 'startupHubs', 'techHQs', 'accelerators', 'cloudRegions', 'techEvents', 'stockExchanges', 'financialCenters', 'centralBanks', 'commodityHubs', 'gulfInvestments', 'positiveEvents', 'kindness', 'happiness', 'speciesRecovery', 'renewableInstallations', 'miningSites', 'processingPlants', 'commodityPorts', 'webcams', 'diseaseOutbreaks', 'storageFacilities', 'fuelShortages', 'liveTankers'],
   },
 };

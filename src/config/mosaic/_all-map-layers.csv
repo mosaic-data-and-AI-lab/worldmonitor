@@ -17,6 +17,7 @@ tradeRoutes,"Trade Routes",flat+globe,,avail,,ON,,ON,ON
 flights,"Aviation",flat+globe,,avail,,,,,
 protests,"Protests",flat+globe,,avail,,,,,
 ucdpEvents,"Armed Conflict Events",flat+globe,,avail,,,,,
+eventDensity,"Event Density",flat*,,,,,,,
 displacement,"Displacement Flows",flat+globe,,avail,,,,,
 climate,"Climate Anomalies",flat+globe,,avail,,,,ON,ON
 weather,"US Weather Alerts (NWS)",flat+globe,,ON,,ON,,ON,ON

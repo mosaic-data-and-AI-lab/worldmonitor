@@ -1,0 +1,161 @@
+/**
+ * One shape for point events from every conflict/unrest feed.
+ *
+ * The map receives three feeds in three shapes — UCDP (`UcdpGeoEvent`), the
+ * ACLED conflict endpoint (`ConflictEvent`) and the unrest feed
+ * (`SocialUnrestEvent`). Anything that wants to treat them as one set of
+ * events (the hotspot density layer, the affected-infrastructure join, a
+ * future history store) converts them here first.
+ *
+ * Lives in shared/ with no src/ imports so a server handler or seeder can use
+ * the same shape. The converters accept structural inputs, so the src/ types
+ * pass straight in.
+ */
+
+/** Who reported the event. Shown per source so a GDELT-only map is obvious. */
+export type GeoEventSource = 'ucdp' | 'acled' | 'gdelt' | 'rss';
+
+export interface GeoEvent {
+  /** Prefixed by feed (`ucdp:`, `conflict:`, `unrest:`) so ids never collide across feeds. */
+  id: string;
+  source: GeoEventSource;
+  /**
+   * The feed's own category, unchanged: `one-sided`, `riot`, `explosion`…
+   * The peril filter maps these to perils later; this layer does not.
+   */
+  kind: string;
+  lat: number;
+  lon: number;
+  /** Epoch milliseconds. */
+  time: number;
+  country: string;
+  /** Sub-national region (admin1) when the feed carries one. UCDP does not. */
+  region?: string;
+  fatalities: number;
+  actors: string[];
+  title?: string;
+}
+
+/** The fields read from a UCDP GED event (`UcdpGeoEvent` in src/types). */
+export interface UcdpEventInput {
+  id: string;
+  date_start: string;
+  latitude: number;
+  longitude: number;
+  country: string;
+  side_a: string;
+  side_b: string;
+  deaths_best: number;
+  type_of_violence: string;
+}
+
+/** The fields read from an ACLED-endpoint event (`ConflictEvent` in src/services/conflict). */
+export interface ConflictEventInput {
+  id: string;
+  eventType: string;
+  country: string;
+  region?: string;
+  lat: number;
+  lon: number;
+  time: Date | number | string;
+  fatalities: number;
+  actors: string[];
+}
+
+/** The fields read from an unrest event (`SocialUnrestEvent` in src/types). */
+export interface UnrestEventInput {
+  id: string;
+  title?: string;
+  eventType: string;
+  country: string;
+  region?: string;
+  lat: number;
+  lon: number;
+  time: Date | number | string;
+  fatalities?: number;
+  actors?: string[];
+  sourceType: 'acled' | 'gdelt' | 'rss';
+}
+
+function toMs(t: Date | number | string): number {
+  if (t instanceof Date) return t.getTime();
+  return typeof t === 'number' ? t : Date.parse(t);
+}
+
+/**
+ * Feeds map a missing location to 0/0 (the UCDP adapter uses `?? 0`), so
+ * "null island" is treated as no location rather than an event off Africa.
+ */
+function isUsablePoint(lat: number, lon: number): boolean {
+  return Number.isFinite(lat) && Number.isFinite(lon)
+    && Math.abs(lat) <= 90 && Math.abs(lon) <= 180
+    && !(lat === 0 && lon === 0);
+}
+
+export function fromUcdp(e: UcdpEventInput): GeoEvent | null {
+  const time = Date.parse(e.date_start);
+  if (!isUsablePoint(e.latitude, e.longitude) || !Number.isFinite(time)) return null;
+  return {
+    id: `ucdp:${e.id}`,
+    source: 'ucdp',
+    kind: e.type_of_violence,
+    lat: e.latitude,
+    lon: e.longitude,
+    time,
+    country: e.country,
+    fatalities: e.deaths_best || 0,
+    actors: [e.side_a, e.side_b].filter(Boolean),
+  };
+}
+
+/**
+ * The ACLED endpoint is also filled from GDELT when ACLED is unavailable
+ * (seed-conflict-intel's fallback, ids `gdelt-…`). Those records are counted
+ * as GDELT, and their type is not trusted: the client maps any unrecognised
+ * type to `battle`, so a GDELT record's `eventType` says nothing real.
+ */
+export function fromConflict(e: ConflictEventInput): GeoEvent | null {
+  const time = toMs(e.time);
+  if (!isUsablePoint(e.lat, e.lon) || !Number.isFinite(time)) return null;
+  const isGdelt = e.id.startsWith('gdelt');
+  return {
+    id: `conflict:${e.id}`,
+    source: isGdelt ? 'gdelt' : 'acled',
+    kind: isGdelt ? 'conflict' : e.eventType,
+    lat: e.lat,
+    lon: e.lon,
+    time,
+    country: e.country,
+    ...(e.region ? { region: e.region } : {}),
+    fatalities: e.fatalities || 0,
+    actors: e.actors ?? [],
+  };
+}
+
+export function fromUnrest(e: UnrestEventInput): GeoEvent | null {
+  const time = toMs(e.time);
+  if (!isUsablePoint(e.lat, e.lon) || !Number.isFinite(time)) return null;
+  return {
+    id: `unrest:${e.id}`,
+    source: e.sourceType,
+    kind: e.eventType,
+    lat: e.lat,
+    lon: e.lon,
+    time,
+    country: e.country,
+    ...(e.region ? { region: e.region } : {}),
+    fatalities: e.fatalities ?? 0,
+    actors: e.actors ?? [],
+    ...(e.title ? { title: e.title } : {}),
+  };
+}
+
+/** Converts a feed, dropping events without a usable location or time. */
+export function toGeoEvents<T>(items: readonly T[], convert: (item: T) => GeoEvent | null): GeoEvent[] {
+  const out: GeoEvent[] = [];
+  for (const item of items) {
+    const event = convert(item);
+    if (event) out.push(event);
+  }
+  return out;
+}

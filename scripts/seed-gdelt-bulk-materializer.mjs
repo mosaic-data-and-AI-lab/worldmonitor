@@ -24,6 +24,7 @@ import {
   mapGdeltExportToConflictEvents,
   mergeGdeltBulkRollingWindow,
 } from './_conflict-gdelt-bulk.mjs';
+import { buildGdeltProtestEvents, mapGdeltExportToProtestRows } from './_gdelt-protest-events.mjs';
 export {
   GDELT_INTEL_KEY,
   GDELT_BULK_STATE_KEY,
@@ -199,7 +200,7 @@ export async function fetchGdeltBulkFiles({
       const csv = extractGdeltBulkCsv(zip, descriptor);
       return descriptor.kind === 'gkg'
         ? { descriptor, records: parseGdeltGkgCsv(csv) }
-        : { descriptor, events: mapGdeltExportToConflictEvents(csv) };
+        : { descriptor, events: mapGdeltExportToConflictEvents(csv), protests: mapGdeltExportToProtestRows(csv) };
     },
   );
   return downloaded;
@@ -379,9 +380,10 @@ export async function fetchMaterializedGdelt(deps = {}) {
 
   const exportBatches = downloaded
     .filter(({ descriptor }) => descriptor.kind === 'export')
-    .map(({ descriptor, events, csv }) => ({
+    .map(({ descriptor, events, protests, csv }) => ({
       timestamp: descriptor.timestamp,
       events: events ?? mapGdeltExportToConflictEvents(csv),
+      protests: protests ?? (csv ? mapGdeltExportToProtestRows(csv) : []),
     }));
   const latestExport = exportBatches.map(({ timestamp }) => timestamp).sort().at(-1);
   const oldestExport = exportBatches.map(({ timestamp }) => timestamp).sort().at(0);
@@ -422,10 +424,36 @@ export async function fetchMaterializedGdelt(deps = {}) {
     throw new Error('GDELT bulk materializer has no conflict export data');
   }
 
+  // Unrest comes from protest events in the same export (who / what / where per
+  // event, see _gdelt-protest-events.mjs), not from GKG articles that merely
+  // mention a place. Rows are kept as a 24h rolling window like conflict events.
+  const protestWindow = exportBatches.length > 0
+    ? mergeGdeltBulkRollingWindow(
+        {
+          events: exportBatches.flatMap(({ protests }) => protests),
+          oldestExportTimestamp: oldestExport,
+          exportTimestamp: latestExport,
+        },
+        previousState?.protests,
+        nowMs,
+      )
+    : null;
+  const protestsPayload = protestWindow
+    ? {
+        events: protestWindow.events,
+        source: 'gdelt-bulk',
+        pagination: {
+          exportTimestamp: latestExport,
+          oldestExportTimestamp: oldestExport,
+          rollingWindowStartedAt: protestWindow.rollingWindowStartedAt,
+        },
+      }
+    : previousState?.protests ?? null;
+
   return {
     ...materialized.intel,
     _timelines: materialized.timelines,
-    _unrest: materialized.unrest,
+    _unrest: { events: buildGdeltProtestEvents(protestsPayload?.events ?? []), fetchedAt: nowMs },
     _positive: materialized.positive,
     _reference: materialized.reference,
     _conflict: conflictPayload,
@@ -446,6 +474,7 @@ export async function fetchMaterializedGdelt(deps = {}) {
       timelines: materialized.timelines,
       reference: materialized.reference,
       conflict: conflictPayload,
+      protests: protestsPayload,
       coverage,
       updatedAt: nowMs,
     },

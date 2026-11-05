@@ -604,9 +604,10 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
       result._state.recentGkgBatches.flatMap(({ records: batchRecords }) => batchRecords).length,
       5_000,
     );
-    assert.equal(result._unrest.events.length, 1);
-    assert.equal(result._unrest.events[0].city, 'Alexandria');
-    assert.equal(result._unrest.events[0].tone, -2);
+    // Unrest now comes from protest events in the Events export
+    // (tests/gdelt-protest-events.test.mjs), not from these GKG geo records;
+    // this cohort's export has no protest rows.
+    assert.deepEqual(result._unrest.events, []);
   });
 
   it('publishes only the established intel shape to the canonical key', () => {

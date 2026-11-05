@@ -119,6 +119,25 @@ describe('geo-events converters', () => {
     assert.equal('sourceName' in (fromUcdp({ ...ucdp, source_original: '  ' }) ?? {}), false);
   });
 
+  it('carries the plain-English summary, city and GDELT report count of an unrest event', () => {
+    const e = fromUnrest({
+      ...unrest,
+      title: 'Demonstration in Tehran, Iran',
+      summary: 'Demonstration by students against the government. Reported in 9 news articles.',
+      city: 'Tehran',
+      tags: ['9 news reports', 'city-level location'],
+    });
+    assert.equal(e?.summary, 'Demonstration by students against the government. Reported in 9 news articles.');
+    assert.equal(e?.city, 'Tehran');
+    assert.equal(e?.reports, 9);
+    assert.equal('reports' in (fromUnrest({ ...unrest, tags: ['protest'] }) ?? {}), false);
+  });
+
+  it('marks an ACLED event that GDELT also reported (merged by the unrest seed)', () => {
+    assert.deepEqual(fromUnrest({ ...unrest, sourceType: 'acled', sources: ['Reuters', 'GDELT'] })?.alsoIn, ['gdelt']);
+    assert.equal('alsoIn' in (fromUnrest({ ...unrest, sourceType: 'gdelt', sources: ['GDELT'] }) ?? {}), false);
+  });
+
   it('toGeoEvents keeps order and skips dropped events', () => {
     const events = toGeoEvents([ucdp, { ...ucdp, id: 'bad', latitude: 0, longitude: 0 }, { ...ucdp, id: '2' }], fromUcdp);
     assert.deepEqual(events.map((e) => e.id), ['ucdp:512345', 'ucdp:2']);

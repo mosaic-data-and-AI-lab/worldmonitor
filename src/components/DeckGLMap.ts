@@ -4922,7 +4922,10 @@ export class DeckGLMap {
           .map(([source, n]) => `${text(DENSITY_SOURCE_LABELS[source as GeoEventSource] ?? source)} ${Number(n)}`)
           .join(' · ');
         const deaths = Number(obj.fatalities) || 0;
-        return { html: `<div class="deckgl-tooltip"><strong>${Number(obj.count)} event${Number(obj.count) === 1 ? '' : 's'}</strong><br/>${sources}<br/>${deaths} death${deaths === 1 ? '' : 's'}${obj.topCountry ? ` · mostly ${text(obj.topCountry)}` : ''}<br/><em>Click for events and sources</em></div>` };
+        const reports = (Array.isArray(obj.events) ? obj.events as GeoEvent[] : [])
+          .reduce((sum, e) => sum + (e.reports ?? 0), 0);
+        const reportsLine = reports > 0 ? ` · ${reports} news report${reports === 1 ? '' : 's'}` : '';
+        return { html: `<div class="deckgl-tooltip"><strong>${Number(obj.count)} event${Number(obj.count) === 1 ? '' : 's'}</strong>${reportsLine}<br/>${sources}<br/>${deaths} death${deaths === 1 ? '' : 's'}${obj.topCountry ? ` · mostly ${text(obj.topCountry)}` : ''}<br/><em>Click for events and sources</em></div>` };
       }
       case 'cable-advisories-layer': {
         const cableName = UNDERSEA_CABLES.find(c => c.id === obj.cableId)?.name || obj.cableId;

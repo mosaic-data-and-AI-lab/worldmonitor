@@ -41,6 +41,14 @@ export interface GeoEvent {
   urls?: string[];
   /** Outlet names when the feed has no link (ACLED `source`, UCDP `source_original`). */
   sourceName?: string;
+  /** Plain-English description of what happened (GDELT protest events, ACLED notes). */
+  summary?: string;
+  /** City, when the feed names one. */
+  city?: string;
+  /** How many news articles reported the event, when the feed says (GDELT). */
+  reports?: number;
+  /** Other feeds that reported the same event and were merged into this one. */
+  alsoIn?: GeoEventSource[];
 }
 
 /** The fields read from a UCDP GED event (`UcdpGeoEvent` in src/types). */
@@ -85,7 +93,15 @@ export interface UnrestEventInput {
   actors?: string[];
   sourceUrls?: string[];
   sourceType: 'acled' | 'gdelt' | 'rss';
+  summary?: string;
+  city?: string;
+  /** Readable tags; GDELT protest events carry their report count as "N news reports". */
+  tags?: string[];
+  /** Feed names after de-duplication, e.g. an ACLED event that also lists "GDELT". */
+  sources?: string[];
 }
+
+const REPORTS_TAG = /^(\d+) news reports?$/;
 
 /** Keeps http(s) links only, de-duplicated, in feed order. */
 function webLinks(urls: readonly string[] | undefined): string[] {
@@ -158,6 +174,13 @@ export function fromUnrest(e: UnrestEventInput): GeoEvent | null {
   const time = toMs(e.time);
   if (!isUsablePoint(e.lat, e.lon) || !Number.isFinite(time)) return null;
   const urls = webLinks(e.sourceUrls);
+  const summary = e.summary?.trim();
+  const reportsMatch = (e.tags ?? []).map((tag) => REPORTS_TAG.exec(tag.trim())).find(Boolean);
+  // The unrest seed merges the same event from ACLED and GDELT into the ACLED
+  // record and lists both feeds in `sources`.
+  const alsoIn = e.sourceType !== 'gdelt' && (e.sources ?? []).some((s) => s.toUpperCase() === 'GDELT')
+    ? (['gdelt'] as GeoEventSource[])
+    : [];
   return {
     id: `unrest:${e.id}`,
     source: e.sourceType,
@@ -167,9 +190,13 @@ export function fromUnrest(e: UnrestEventInput): GeoEvent | null {
     time,
     country: e.country,
     ...(e.region ? { region: e.region } : {}),
+    ...(e.city ? { city: e.city } : {}),
     fatalities: e.fatalities ?? 0,
     actors: e.actors ?? [],
     ...(e.title ? { title: e.title } : {}),
+    ...(summary ? { summary } : {}),
+    ...(reportsMatch ? { reports: Number(reportsMatch[1]) } : {}),
+    ...(alsoIn.length > 0 ? { alsoIn } : {}),
     ...(urls.length > 0 ? { urls } : {}),
   };
 }

@@ -3690,10 +3690,17 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
       .toLowerCase();
     const limit = 15;
     const events = cell.events ?? [];
+    const clip = (value: string, max: number): string => (value.length > max ? `${value.slice(0, max)}…` : value);
     const items = events.slice(0, limit).map((e) => {
-      const date = new Date(e.time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-      const place = [e.region, e.country].filter(Boolean).map((p) => escapeHtml(String(p))).join(', ');
-      const text = e.title ? escapeHtml(e.title.length > 70 ? `${e.title.slice(0, 70)}…` : e.title) : escapeHtml(kindLabel(e.kind));
+      // When: GDELT gives the time the reports came in; ACLED and UCDP give the event's date only.
+      const when = e.source === 'gdelt'
+        ? `${new Date(e.time).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })} UTC`
+        : new Date(e.time).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+      const place = [...new Set([e.city, e.region, e.country].filter(Boolean))].map((p) => escapeHtml(String(p))).join(', ');
+      const what = escapeHtml(clip(e.title || kindLabel(e.kind), 90));
+      const detail = e.summary ? `<br/><span class="cluster-item-summary">${escapeHtml(clip(e.summary, 220))}</span>` : '';
+      const feeds = [e.source, ...(e.alsoIn ?? [])].map((s) => sourceLabels[s] ?? s).join(' + ');
+      const reports = e.reports ? ` • ${e.reports} news report${e.reports === 1 ? '' : 's'}` : '';
       const deaths = e.fatalities > 0 ? ` • 💀 ${e.fatalities}` : '';
       const links = (e.urls ?? [])
         .map((url) => sanitizeUrl(url))
@@ -3708,12 +3715,20 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
       const outlet = !links && e.sourceName
         ? ` <span class="cluster-source-name">${escapeHtml(e.sourceName.length > 60 ? `${e.sourceName.slice(0, 60)}…` : e.sourceName)}</span>`
         : '';
-      return `<li class="cluster-item">${kindIcon(e.kind)} ${escapeHtml(date)} • ${escapeHtml(sourceLabels[e.source] ?? e.source)}${place ? ` • ${place}` : ''}${deaths}<br/>${text}${links ? `<br/>${links}` : ''}${outlet}</li>`;
+      // What → details → where / when / who reported it → links.
+      return `<li class="cluster-item">${kindIcon(e.kind)} <strong>${what}</strong>${detail}`
+        + `<br/>📍 ${place || escapeHtml(e.country)} • 🗓 ${escapeHtml(when)} • ${escapeHtml(feeds)}${reports}${deaths}`
+        + `${links ? `<br/>${links}` : ''}${outlet}</li>`;
     }).join('');
     const more = events.length > limit ? `<li class="cluster-more">+${events.length - limit} ${t('popups.moreEvents')}</li>` : '';
     const bySource = Object.entries(cell.bySource ?? {})
       .map(([source, n]) => `<span class="summary-item">${escapeHtml(sourceLabels[source] ?? source)} ${Number(n)}</span>`)
       .join('');
+    const totalReports = events.reduce((sum, e) => sum + (e.reports ?? 0), 0);
+    const reportsChip = totalReports > 0 ? `<span class="summary-item">📰 ${totalReports} news reports</span>` : '';
+    const gdeltNote = events.some((e) => e.source === 'gdelt')
+      ? '<div class="cluster-note">GDELT events are extracted automatically from news coverage, not verified incidents.</div>'
+      : '';
     const deaths = Number(cell.fatalities) || 0;
 
     return `
@@ -3725,9 +3740,11 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
       <div class="popup-body cluster-popup">
         <div class="cluster-summary">
           ${bySource}
+          ${reportsChip}
           ${deaths > 0 ? `<span class="summary-item fatalities">💀 ${deaths} ${t('popups.fatalities')}</span>` : ''}
         </div>
         <ul class="cluster-list">${items}${more}</ul>
+        ${gdeltNote}
       </div>
     `;
   }

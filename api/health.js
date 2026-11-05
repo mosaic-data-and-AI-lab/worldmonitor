@@ -223,6 +223,7 @@ const BOOTSTRAP_KEYS = {
   spending:          'economic:spending:v1',
   techEvents:        'research:tech-events-bootstrap:v1',
   gdeltIntel:        'intelligence:gdelt-intel:v1',
+  gdeltConflictMap:  'gdelt:bulk:conflict-map-events:v1',
   correlationCards:   'correlation:cards-bootstrap:v1',
   crossStraitActivity: 'military:cross-strait-activity:v1',
   crossStraitActivityBootstrap: 'military:cross-strait-activity-bootstrap:v1',
@@ -689,6 +690,7 @@ const SEED_META = {
   techEvents:       { key: 'seed-meta:research:tech-events',       maxStaleMin: 480 },
   researchArxivHnTrending: { key: 'seed-meta:research:arxiv-hn-trending', maxStaleMin: 150 },
   gdeltIntel:       { key: 'seed-meta:intelligence:gdelt-intel',   maxStaleMin: 45 }, // 15min bulk materializer; 45min = 3× cadence and expires before the 24h canonical key.
+  gdeltConflictMap: { key: 'seed-meta:intelligence:gdelt-intel',   maxStaleMin: 45 }, // written by the same materializer run as gdeltIntel
   telegramFeed:     { key: 'seed-meta:intelligence:telegram-feed:v1', maxStaleMin: 10 }, // 60s poll interval; 10min grace catches poll failures before they go stale in the panel
   digestNotifications: { key: 'seed-meta:digest:last-run',          maxStaleMin: 90 }, // Railway digest-notifications cron runs every 30min; 90 = 3x cadence and detects a dead cron before daily digests are missed.
   forecasts:        { key: 'seed-meta:forecast:predictions',       maxStaleMin: 90 },

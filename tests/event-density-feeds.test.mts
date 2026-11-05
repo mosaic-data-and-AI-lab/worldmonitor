@@ -46,4 +46,38 @@ describe('combineDensityEvents', () => {
     const events = combineDensityEvents({ ucdp: [ucdp], conflicts: [bad], unrest: [] });
     assert.deepEqual(events.map((e) => e.id), ['ucdp:512345']);
   });
+
+  const gdeltClash = {
+    id: 'gdelt-conflict--3365261-20261104-193',
+    title: 'Armed clash in Khartoum, Sudan',
+    summary: 'Armed clash by the military against rebels. Reported in 7 news articles.',
+    eventType: 'armed clash',
+    city: 'Khartoum',
+    country: 'Sudan',
+    location: { latitude: 15.55, longitude: 32.53 },
+    occurredAt: Date.parse('2026-11-04T12:00:00Z'),
+    tags: ['7 news reports', 'city-level location'],
+    sourceUrls: ['https://news.example/clash'],
+  };
+
+  it('shows located GDELT conflict events, with title, reports and links, while ACLED has none', () => {
+    const [event] = combineDensityEvents({ ucdp: [], conflicts: [], unrest: [], gdeltConflict: [gdeltClash] });
+    assert.equal(event?.id, 'conflict:gdelt-conflict--3365261-20261104-193');
+    assert.equal(event?.source, 'gdelt');
+    assert.equal(event?.kind, 'armed clash');
+    assert.equal(event?.title, 'Armed clash in Khartoum, Sudan');
+    assert.equal(event?.reports, 7);
+    assert.deepEqual(event?.urls, ['https://news.example/clash']);
+    assert.deepEqual([event?.lat, event?.lon], [15.55, 32.53]);
+  });
+
+  it('drops GDELT conflict events once ACLED supplies real conflict events', () => {
+    const events = combineDensityEvents({ ucdp: [], conflicts: [acledSameBattle], unrest: [], gdeltConflict: [gdeltClash] });
+    assert.deepEqual(events.map((e) => e.id), ['conflict:acled-NIG1']);
+  });
+
+  it('drops GDELT conflict events without a location', () => {
+    const { location: _drop, ...noLocation } = gdeltClash;
+    assert.deepEqual(combineDensityEvents({ ucdp: [], conflicts: [], unrest: [], gdeltConflict: [noLocation] }), []);
+  });
 });

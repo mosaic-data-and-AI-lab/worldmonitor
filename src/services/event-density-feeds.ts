@@ -1,10 +1,11 @@
 /**
- * Combines the three point feeds into the one event list the hotspot density
- * layer bins: UCDP, the ACLED conflict endpoint and the unrest feed.
+ * Combines the point feeds into the one event list the hotspot density layer
+ * bins: UCDP, the ACLED conflict endpoint, the unrest feed and, while ACLED has
+ * no conflict data, located GDELT conflict events.
  */
 import {
-  fromConflict, fromUcdp, fromUnrest, toGeoEvents,
-  type ConflictEventInput, type GeoEvent, type UcdpEventInput, type UnrestEventInput,
+  fromConflict, fromGdeltConflict, fromUcdp, fromUnrest, toGeoEvents,
+  type ConflictEventInput, type GdeltConflictEventInput, type GeoEvent, type UcdpEventInput, type UnrestEventInput,
 } from '../../shared/geo-events';
 import { isDuplicatedByAcled, type AcledDedupEvent } from './conflict/ucdp-dedupe';
 
@@ -13,6 +14,8 @@ export interface DensityFeeds {
   ucdp: readonly UcdpEventInput[];
   conflicts: readonly ConflictEventInput[];
   unrest: readonly UnrestEventInput[];
+  /** Located GDELT conflict events; used only when ACLED supplied no conflict events. */
+  gdeltConflict?: readonly GdeltConflictEventInput[];
 }
 
 function toAcledDedup(e: ConflictEventInput): AcledDedupEvent | null {
@@ -41,9 +44,13 @@ export function combineDensityEvents(feeds: DensityFeeds): GeoEvent[] {
     dateMs: Date.parse(u.date_start),
     deathsBest: u.deaths_best,
   }, acled));
+  // GDELT conflict stands in for ACLED while ACLED has no conflict data (no
+  // access, or an outage); with real ACLED events it would double-count them.
+  const gdeltConflict = acled.length === 0 ? feeds.gdeltConflict ?? [] : [];
   return [
     ...toGeoEvents(ucdp, fromUcdp),
     ...toGeoEvents(feeds.conflicts, fromConflict),
+    ...toGeoEvents(gdeltConflict, fromGdeltConflict),
     ...toGeoEvents(feeds.unrest, fromUnrest),
   ];
 }

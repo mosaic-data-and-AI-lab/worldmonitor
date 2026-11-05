@@ -136,7 +136,8 @@ import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
 import { filterFeedsByLanguage } from '@/services/feed-language';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
-import { getHydratedData } from '@/services/bootstrap';
+import { ensureHydrated, getHydratedData } from '@/services/bootstrap';
+import type { GdeltConflictEventInput } from '../../shared/geo-events';
 import { publicRpcFetch } from '@/services/public-rpc-fetch';
 import type { ListFeedDigestResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
 import type { GetSectorSummaryResponse, ListMarketQuotesResponse, ListCommodityQuotesResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
@@ -425,6 +426,7 @@ export class DataLoaderManager implements AppModule {
   private globalTenderFilters: GlobalTenderFilters = {};
   /** Latest de-duplicated UCDP set, kept for the density layer (protests and conflicts live in intelligenceCache). */
   private densityUcdp: UcdpGeoEvent[] = [];
+  private densityGdeltConflict: GdeltConflictEventInput[] = [];
   private dailyBriefFrameworkUnsubscribe: (() => void) | null = null;
   private marketImplicationsFrameworkUnsubscribe: (() => void) | null = null;
   private cachedSatRecs: SatRecEntry[] | null = null;
@@ -2875,6 +2877,7 @@ export class DataLoaderManager implements AppModule {
       ucdp: this.densityUcdp,
       conflicts: this.ctx.intelligenceCache.conflicts ?? [],
       unrest: this.ctx.intelligenceCache.protests?.events ?? [],
+      gdeltConflict: this.densityGdeltConflict,
     });
     this.ctx.map?.setDensityEvents(events);
     this.ctx.map?.setLayerReady('eventDensity', events.length > 0);
@@ -2939,6 +2942,20 @@ export class DataLoaderManager implements AppModule {
       }
     })();
     tasks.push(protestsTask.then(() => undefined));
+
+    if (this.ctx.mapLayers.eventDensity) {
+      // Located GDELT conflict events, which the density layer shows while the
+      // ACLED conflict feed is empty (combineDensityEvents decides).
+      tasks.push((async () => {
+        try {
+          const payload = await ensureHydrated('gdeltConflictMap') as { events?: GdeltConflictEventInput[] } | undefined;
+          this.densityGdeltConflict = Array.isArray(payload?.events) ? payload.events : [];
+          this.pushDensityEvents();
+        } catch (error) {
+          console.warn('[Intelligence] GDELT conflict map events unavailable:', error);
+        }
+      })());
+    }
 
     tasks.push((async () => {
       try {

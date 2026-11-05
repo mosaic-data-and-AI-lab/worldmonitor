@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { buildGdeltProtestEvents, mapGdeltExportToProtestRows } from '../scripts/_gdelt-protest-events.mjs';
+import {
+  buildGdeltConflictEvents,
+  buildGdeltProtestEvents,
+  mapGdeltExportToConflictRows,
+  mapGdeltExportToProtestRows,
+} from '../scripts/_gdelt-events-table.mjs';
 import { fetchMaterializedGdelt } from '../scripts/seed-gdelt-bulk-materializer.mjs';
 
 // A GDELT 2.0 Events export row (61 tab-separated columns) with the fields the
@@ -182,5 +187,68 @@ describe('fetchMaterializedGdelt unrest output', () => {
 
     const eightDaysLater = await nextFile('20260807120000', now + 8 * day, { state: threeDaysLater._state, conflict: 'c3', protest: 'p3' });
     assert.deepEqual(eightDaysLater._state.protests.events.map((r) => r.id).sort(), ['gdelt-protest-p2', 'gdelt-protest-p3'], 'p1 aged out after 7 days');
+  });
+
+  it('publishes located conflict events for the map and keeps their rows for 7 days', async () => {
+    const clash = (id, added) => protestRow({
+      id, root: '19', code: '193', actor1: 'MILITARY', actor2: 'REBEL', articles: '4',
+      place: 'Khartoum, Khartoum, Sudan', featureId: '-3365261', day: added.slice(0, 8), added,
+    });
+    const first = await fetchMaterializedGdelt({
+      _now: () => now,
+      _readSnapshot: async () => ({ cursor: {} }),
+      _fetchFiles: async () => files(csv(conflictRow, clash('k1', '20260730120000'))),
+    });
+    assert.deepEqual(first._conflictMap.events.map((e) => e.title), ['Armed clash in Khartoum, Sudan']);
+    assert.equal(first._conflictMap.fetchedAt, now);
+
+    const later = now + 3 * 86_400_000;
+    const second = await fetchMaterializedGdelt({
+      _now: () => later,
+      _readSnapshot: async (key) => (key.includes('state') ? first._state : { cursor: {} }),
+      _fetchFiles: async () => [
+        { descriptor: { kind: 'gkg', timestamp: '20260802120000' }, records: [{ ...gkgRecord, id: 'gkg-k2', date: new Date(later - 5 * 60_000).toISOString() }] },
+        { descriptor: { kind: 'export', timestamp: '20260802120000' }, csv: csv(conflictRowAt('c2', '20260802120000'), clash('k2', '20260802120000')) },
+      ],
+    });
+    assert.deepEqual(second._state.conflictRows.events.map((r) => r.id).sort(), ['gdelt-conflict-k1', 'gdelt-conflict-k2']);
+    assert.equal(second._conflictMap.events.length, 2, 'one clash per day');
+  });
+});
+
+describe('GDELT conflict events', () => {
+  it('keeps root assault / fight / mass-violence events with a city or province location', () => {
+    const rows = mapGdeltExportToConflictRows(csv(
+      protestRow({ id: 'clash', root: '19', code: '193' }),
+      protestRow({ id: 'bomb', root: '18', code: '1832' }),
+      protestRow({ id: 'mass', root: '20', code: '202' }),
+      protestRow({ id: 'protest', root: '14', code: '141' }),
+      protestRow({ id: 'country-only', root: '19', code: '190', geoType: '1' }),
+      protestRow({ id: 'not-root', root: '19', code: '190', isRoot: '0' }),
+    ));
+    assert.deepEqual(rows.map((r) => [r.id, r.baseCode]), [
+      ['gdelt-conflict-clash', '193'], ['gdelt-conflict-bomb', '183'], ['gdelt-conflict-mass', '202'],
+    ]);
+  });
+
+  it('says what happened, where, who, and how many reports, in plain English', () => {
+    const [event, ...rest] = buildGdeltConflictEvents(mapGdeltExportToConflictRows(csv(
+      protestRow({ id: 'a', root: '19', code: '195', actor1: 'ISRAEL', actor2: 'MILITANT', articles: '3', place: 'Gaza, Gaza Strip, Palestine' }),
+      protestRow({ id: 'b', root: '19', code: '195', actor1: 'ISRAEL', actor2: 'MILITANT', articles: '4', place: 'Gaza, Gaza Strip, Palestine' }),
+    )));
+    assert.equal(rest.length, 0);
+    assert.equal(event.title, 'Air strike in Gaza, Palestine');
+    assert.equal(event.summary, 'Air strike by Israel against militants. Reported in 7 news articles.');
+    assert.equal(event.eventType, 'air strike');
+    assert.equal(event.severity, 'SEVERITY_LEVEL_MEDIUM');
+    assert.deepEqual(event.tags, ['7 news reports', 'city-level location']);
+    assert.equal('sourceType' in event, false, 'not an unrest record');
+  });
+
+  it('rates mass violence high and drops single-report codings', () => {
+    const [mass] = buildGdeltConflictEvents(mapGdeltExportToConflictRows(protestRow({ root: '20', code: '202' })));
+    assert.equal(mass.title, 'Mass killing in Tehran, Iran');
+    assert.equal(mass.severity, 'SEVERITY_LEVEL_HIGH');
+    assert.deepEqual(buildGdeltConflictEvents(mapGdeltExportToConflictRows(protestRow({ root: '19', code: '193', articles: '1' }))), []);
   });
 });

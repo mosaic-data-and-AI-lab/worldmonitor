@@ -12,6 +12,7 @@ const {
   fetchMaterializedGdelt,
   GDELT_BULK_ARTICLES_KEY,
   GDELT_BULK_CONFLICT_KEY,
+  GDELT_BULK_CONFLICT_MAP_KEY,
   GDELT_BULK_STATE_KEY,
   GDELT_BULK_UNREST_KEY,
   GDELT_INTEL_KEY,
@@ -605,7 +606,7 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
       5_000,
     );
     // Unrest now comes from protest events in the Events export
-    // (tests/gdelt-protest-events.test.mjs), not from these GKG geo records;
+    // (tests/gdelt-events-table.test.mjs), not from these GKG geo records;
     // this cohort's export has no protest rows.
     assert.deepEqual(result._unrest.events, []);
   });
@@ -643,6 +644,7 @@ describe('seed-gdelt-bulk-materializer publication cohort', () => {
     for (const key of [
       GDELT_BULK_CONFLICT_KEY,
       GDELT_BULK_UNREST_KEY,
+      GDELT_BULK_CONFLICT_MAP_KEY,
       GDELT_BULK_ARTICLES_KEY,
       POSITIVE_EVENTS_RPC_KEY,
       POSITIVE_EVENTS_BOOTSTRAP_KEY,
@@ -673,6 +675,7 @@ describe('seed-gdelt-bulk-materializer publication cohort', () => {
       ]),
       { key: GDELT_BULK_CONFLICT_KEY, ttlSeconds: 6 * 60 * 60 },
       { key: GDELT_BULK_UNREST_KEY, ttlSeconds: 4.5 * 60 * 60 },
+      { key: GDELT_BULK_CONFLICT_MAP_KEY, ttlSeconds: 6 * 60 * 60 },
       { key: GDELT_BULK_ARTICLES_KEY, ttlSeconds: 2 * 86_400 },
       { key: POSITIVE_EVENTS_RPC_KEY, ttlSeconds: 3 * 60 * 60 },
       { key: POSITIVE_EVENTS_BOOTSTRAP_KEY, ttlSeconds: 3 * 60 * 60 },

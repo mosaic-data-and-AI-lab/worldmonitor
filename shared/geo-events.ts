@@ -201,6 +201,38 @@ export function fromUnrest(e: UnrestEventInput): GeoEvent | null {
   };
 }
 
+/**
+ * A located GDELT conflict event (bootstrap key `gdeltConflictMap`, built by
+ * the GDELT materializer from the Events export). Same fields as a GDELT
+ * protest event: title, summary, report count tag and article links.
+ */
+export interface GdeltConflictEventInput {
+  id: string;
+  title?: string;
+  summary?: string;
+  eventType: string;
+  city?: string;
+  country: string;
+  region?: string;
+  location?: { latitude: number; longitude: number };
+  occurredAt: number;
+  fatalities?: number;
+  actors?: string[];
+  sourceUrls?: string[];
+  tags?: string[];
+}
+
+export function fromGdeltConflict(e: GdeltConflictEventInput): GeoEvent | null {
+  const event = fromUnrest({
+    ...e,
+    lat: e.location?.latitude ?? Number.NaN,
+    lon: e.location?.longitude ?? Number.NaN,
+    time: e.occurredAt,
+    sourceType: 'gdelt',
+  });
+  return event && { ...event, id: `conflict:${e.id}` };
+}
+
 /** Converts a feed, dropping events without a usable location or time. */
 export function toGeoEvents<T>(items: readonly T[], convert: (item: T) => GeoEvent | null): GeoEvent[] {
   const out: GeoEvent[] = [];

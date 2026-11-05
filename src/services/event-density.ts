@@ -23,10 +23,11 @@ export interface DensityCell {
 
 /**
  * Hexagon resolution for a map zoom. Average edge length (h3-js 4.4):
- * res 2 ~182 km, 3 ~69 km, 4 ~26 km, 5 ~10 km. Changing only at these
- * thresholds means panning or small zooms never re-bin.
+ * res 1 ~483 km (world view), 2 ~183 km, 3 ~69 km, 4 ~26 km, 5 ~10 km.
+ * Changing only at these thresholds means panning or small zooms never re-bin.
  */
 export function resolutionForZoom(zoom: number): number {
+  if (zoom < 2) return 1;
   if (zoom < 3) return 2;
   if (zoom < 5) return 3;
   if (zoom < 7) return 4;

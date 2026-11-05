@@ -990,8 +990,14 @@ export class DataLoaderManager implements AppModule {
         }
       } catch { /* non-fatal */ }
     }
-    // Intelligence signals: run for any variant that shows these panels
-    if (shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture', 'climate', 'population-exposure', 'security-advisories', 'radiation-watch', 'displacement', 'ucdp-events', 'satellite-fires', 'oref-sirens'])) {
+    // Intelligence signals: run for any variant that shows these panels, or
+    // when a map layer that draws these feeds is already on. Without the layer
+    // check, a layout with none of the panels near the top (e.g. Political
+    // Violence) left protests / UCDP / event density empty until toggled.
+    const intelligenceLayerOn = this.ctx.mapLayers.protests
+      || this.ctx.mapLayers.ucdpEvents
+      || this.ctx.mapLayers.eventDensity === true;
+    if (intelligenceLayerOn || shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture', 'climate', 'population-exposure', 'security-advisories', 'radiation-watch', 'displacement', 'ucdp-events', 'satellite-fires', 'oref-sirens'])) {
       tasks.push({ name: 'intelligence', task: () => runGuarded('intelligence', () => this.loadIntelligenceSignals()) });
     }
 

@@ -14,8 +14,8 @@ function ev(over: Partial<GeoEvent>): GeoEvent {
 }
 
 describe('resolutionForZoom', () => {
-  it('steps at zoom 3, 5 and 7', () => {
-    assert.deepEqual([0, 2, 2.9, 3, 4.9, 5, 6.9, 7, 14].map(resolutionForZoom), [2, 2, 2, 3, 3, 4, 4, 5, 5]);
+  it('steps at zoom 2, 3, 5 and 7 (world view gets ~500 km hexagons)', () => {
+    assert.deepEqual([0, 1.6, 1.9, 2, 2.9, 3, 4.9, 5, 6.9, 7, 14].map(resolutionForZoom), [1, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5]);
   });
 });
 

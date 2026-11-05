@@ -69,8 +69,8 @@ export const LOB_PANELS: Record<LobId, LobSelection> = {
 
 export const LOB_LAYERS: Record<LobId, LobSelection<keyof MapLayers>> = {
   'political-violence': {
-    on: ['hotspots', 'conflicts', 'bases', 'cables', 'pipelines', 'military', 'protests', 'ucdpEvents', 'gpsJamming', 'ciiChoropleth'],
-    avail: ['iranAttacks', 'nuclear', 'irradiators', 'radiationWatch', 'satellites', 'ais', 'tradeRoutes', 'flights', 'eventDensity', 'displacement', 'outages', 'cyberThreats', 'waterways', 'minerals', 'resilienceScore', 'sanctions', 'miningSites', 'commodityPorts', 'webcams', 'storageFacilities', 'fuelShortages', 'liveTankers'],
+    on: ['hotspots', 'conflicts', 'bases', 'cables', 'pipelines', 'military', 'protests', 'ucdpEvents', 'eventDensity', 'gpsJamming', 'ciiChoropleth'],
+    avail: ['iranAttacks', 'nuclear', 'irradiators', 'radiationWatch', 'satellites', 'ais', 'tradeRoutes', 'flights', 'displacement', 'outages', 'cyberThreats', 'waterways', 'minerals', 'resilienceScore', 'sanctions', 'miningSites', 'commodityPorts', 'webcams', 'storageFacilities', 'fuelShortages', 'liveTankers'],
   },
   'cyber': {
     on: ['cables', 'datacenters', 'outages', 'cyberThreats', 'gpsJamming', 'cloudRegions'],

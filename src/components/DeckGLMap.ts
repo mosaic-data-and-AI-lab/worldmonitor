@@ -133,6 +133,7 @@ import { MapPopup, type PopupType } from './MapPopup';
 import { renderMilitaryVesselTooltipHtml } from './deckgl-tooltip-renderers';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { ChinaCorridorControlTower } from '../../shared/china-corridor-control-towers';
+import type { GeoEvent } from '../../shared/geo-events';
 import {
   projectChinaCorridorOverlay,
   type ChinaCorridorOverlayProjection,
@@ -608,6 +609,8 @@ export class DeckGLMap {
   private newsLocations: Array<{ lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date }> = [];
   private newsLocationFirstSeen = new Map<string, number>();
   private ucdpEvents: UcdpGeoEvent[] = [];
+  /** Combined UCDP + ACLED + unrest events for the hotspot density layer. */
+  private densityEvents: GeoEvent[] = [];
   private displacementFlows: DisplacementFlow[] = [];
   private gpsJammingHexes: GpsJamHexWithPolygon[] = [];
   private gpsJammingLoadSeq = 0;
@@ -6922,6 +6925,12 @@ export class DeckGLMap {
 
   public setUcdpEvents(events: UcdpGeoEvent[]): void {
     this.ucdpEvents = events;
+    this.render();
+  }
+
+  /** Hotspot density input; binning and drawing happen in buildLayers. */
+  public setDensityEvents(events: GeoEvent[]): void {
+    this.densityEvents = events;
     this.render();
   }
 

@@ -6,7 +6,7 @@ import { runHydrationTier, type HydrationTask } from '@/app/hydration-scheduler'
 import { yieldToMain } from '@/utils/after-paint';
 import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
 import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/services/military-vessels-lazy';
-import type { NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
+import type { NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight, UcdpGeoEvent } from '@/types';
 import type { MarketData } from '@/types';
 import type { TimeRange } from '@/components/MapContainer';
 import {
@@ -198,6 +198,7 @@ import type {
   SectorBriefContext,
 } from '@/services/daily-market-brief';
 import { fetchCachedRiskScores, getCachedScores, toCountryScore, type CachedRiskScores } from '@/services/cached-risk-scores';
+import { combineDensityEvents } from '@/services/event-density-feeds';
 import type { ThreatLevel as ClientThreatLevel } from '@/types';
 import type { NewsItem as ProtoNewsItem } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { fetchMarketImplications } from '@/services/market-implications';
@@ -422,6 +423,8 @@ export class DataLoaderManager implements AppModule {
   private readonly marketLoadGuard = new LatestRequestGuard();
   private globalTenderGeneration = 0;
   private globalTenderFilters: GlobalTenderFilters = {};
+  /** Latest de-duplicated UCDP set, kept for the density layer (protests and conflicts live in intelligenceCache). */
+  private densityUcdp: UcdpGeoEvent[] = [];
   private dailyBriefFrameworkUnsubscribe: (() => void) | null = null;
   private marketImplicationsFrameworkUnsubscribe: (() => void) | null = null;
   private cachedSatRecs: SatRecEntry[] | null = null;
@@ -1133,6 +1136,7 @@ export class DataLoaderManager implements AppModule {
         case 'displacement':
         case 'climate':
         case 'gpsJamming':
+        case 'eventDensity':
           await this.loadIntelligenceSignals();
           break;
         case 'diseaseOutbreaks':
@@ -2854,6 +2858,22 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
+  /**
+   * Feeds the hotspot density layer from whatever UCDP, ACLED-conflict and
+   * unrest data is loaded. Called after each of the three feeds lands, so the
+   * layer fills in as they arrive and works even with the point layers off.
+   */
+  private pushDensityEvents(): void {
+    if (!this.ctx.mapLayers.eventDensity) return;
+    const events = combineDensityEvents({
+      ucdp: this.densityUcdp,
+      conflicts: this.ctx.intelligenceCache.conflicts ?? [],
+      unrest: this.ctx.intelligenceCache.protests?.events ?? [],
+    });
+    this.ctx.map?.setDensityEvents(events);
+    this.ctx.map?.setLayerReady('eventDensity', events.length > 0);
+  }
+
   async loadIntelligenceSignals(): Promise<void> {
     const _desktopLocked = isDesktopRuntime() && !hasPremiumAccess();
     const tasks: Promise<void>[] = [];
@@ -2888,6 +2908,7 @@ export class DataLoaderManager implements AppModule {
       try {
         const protestData = await fetchProtestEvents();
         this.ctx.intelligenceCache.protests = protestData;
+        this.pushDensityEvents();
         ingestProtests(protestData.events);
         await runSignalAggregator(this.ctx.statusPanel, 'protests', (aggregator) => aggregator.ingestProtests(protestData.events));
         const protestCount = protestData.sources.acled + protestData.sources.gdelt;
@@ -2917,6 +2938,7 @@ export class DataLoaderManager implements AppModule {
       try {
         const conflictData = await fetchConflictEvents();
         this.ctx.intelligenceCache.conflicts = conflictData.events;
+        this.pushDensityEvents();
         ingestConflictsForCountryData(conflictData.events);
         if (conflictData.count > 0) dataFreshness.recordUpdate('acled_conflict', conflictData.count);
       } catch (error) {
@@ -2990,8 +3012,8 @@ export class DataLoaderManager implements AppModule {
         // 2,000. The panel is fine with that (it renders 50/tab and takes its
         // counts from the precomputed aggregates), but the map draws every event.
         // When its layer is on, skip hydration so fetchUcdpEvents goes to the RPC
-        // and returns the full set.
-        const wantsFullUcdpSet = this.ctx.mapLayers.ucdpEvents;
+        // and returns the full set. The density layer bins every event too.
+        const wantsFullUcdpSet = this.ctx.mapLayers.ucdpEvents || this.ctx.mapLayers.eventDensity === true;
         const result = await fetchUcdpEvents(wantsFullUcdpSet ? undefined : hydratedUcdp);
         if (!result.success) {
           // listUcdpEvents is a pure Redis-read (gold standard). Retrying returns
@@ -3014,6 +3036,8 @@ export class DataLoaderManager implements AppModule {
         if (this.ctx.mapLayers.ucdpEvents) {
           this.ctx.map?.setUcdpEvents(events);
         }
+        this.densityUcdp = events;
+        this.pushDensityEvents();
         if (events.length > 0) dataFreshness.recordUpdate('ucdp_events', events.length);
       } catch (error) {
         console.error('[Intelligence] UCDP events fetch failed:', error);
@@ -3334,6 +3358,7 @@ export class DataLoaderManager implements AppModule {
   async loadProtests(): Promise<void> {
     if (this.ctx.intelligenceCache.protests) {
       const protestData = this.ctx.intelligenceCache.protests;
+      this.pushDensityEvents();
       this.ctx.map?.setProtests(protestData.events);
       this.ctx.map?.setLayerReady('protests', protestData.events.length > 0);
       const status = getProtestStatus();
@@ -3354,6 +3379,7 @@ export class DataLoaderManager implements AppModule {
     try {
       const protestData = await fetchProtestEvents();
       this.ctx.intelligenceCache.protests = protestData;
+      this.pushDensityEvents();
       this.ctx.map?.setProtests(protestData.events);
       this.ctx.map?.setLayerReady('protests', protestData.events.length > 0);
       ingestProtests(protestData.events);

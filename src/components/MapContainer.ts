@@ -59,6 +59,7 @@ import type { AcledConflictEvent } from '@/generated/client/worldmonitor/conflic
 import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { ChinaCorridorControlTower } from '../../shared/china-corridor-control-towers';
+import type { GeoEvent } from '../../shared/geo-events';
 import { projectChinaCorridorOverlay } from './map/china-corridor-overlay';
 import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-templates';
 import { getAuthState } from '@/services/auth-state';
@@ -221,6 +222,7 @@ export class MapContainer {
   private cachedFires: FireMarker[] | null = null;
   private cachedTechEvents: TechEventMarker[] | null = null;
   private cachedUcdpEvents: UcdpGeoEvent[] | null = null;
+  private cachedDensityEvents: GeoEvent[] | null = null;
   private cachedDisplacementFlows: DisplacementFlow[] | null = null;
   private cachedClimateAnomalies: ClimateAnomaly[] | null = null;
   private cachedRadiationObservations: RadiationObservation[] | null = null;
@@ -733,6 +735,7 @@ export class MapContainer {
     if (this.cachedFires) this.setFires(this.cachedFires);
     if (this.cachedTechEvents) this.setTechEvents(this.cachedTechEvents);
     if (this.cachedUcdpEvents) this.setUcdpEvents(this.cachedUcdpEvents);
+    if (this.cachedDensityEvents) this.setDensityEvents(this.cachedDensityEvents);
     if (this.cachedDisplacementFlows) this.setDisplacementFlows(this.cachedDisplacementFlows);
     if (this.cachedClimateAnomalies) this.setClimateAnomalies(this.cachedClimateAnomalies);
     if (this.cachedRadiationObservations) this.setRadiationObservations(this.cachedRadiationObservations);
@@ -1120,6 +1123,12 @@ export class MapContainer {
     if (this.useDeckGL) {
       this.deckGLMap?.setUcdpEvents(events);
     }
+  }
+
+  /** Hotspot density layer input. DeckGL only; cached so a renderer switch replays it. */
+  public setDensityEvents(events: GeoEvent[]): void {
+    this.cachedDensityEvents = events;
+    if (this.useDeckGL && !this.useGlobe) this.deckGLMap?.setDensityEvents(events);
   }
 
   public setDisplacementFlows(flows: DisplacementFlow[]): void {
@@ -1703,6 +1712,7 @@ export class MapContainer {
     this.cachedFires = null;
     this.cachedTechEvents = null;
     this.cachedUcdpEvents = null;
+    this.cachedDensityEvents = null;
     this.cachedDisplacementFlows = null;
     this.cachedClimateAnomalies = null;
     this.cachedRadiationObservations = null;

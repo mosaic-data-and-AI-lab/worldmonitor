@@ -215,7 +215,12 @@ export async function fetchGdeltBulkFiles({
       const csv = extractGdeltBulkCsv(zip, descriptor);
       return descriptor.kind === 'gkg'
         ? { descriptor, records: parseGdeltGkgCsv(csv) }
-        : { descriptor, events: mapGdeltExportToConflictEvents(csv), protests: mapGdeltExportToProtestRows(csv) };
+        : {
+            descriptor,
+            events: mapGdeltExportToConflictEvents(csv),
+            protests: mapGdeltExportToProtestRows(csv),
+            conflictRows: mapGdeltExportToConflictRows(csv),
+          };
     },
   );
   return downloaded;

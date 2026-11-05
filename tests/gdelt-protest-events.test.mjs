@@ -117,12 +117,13 @@ describe('fetchMaterializedGdelt unrest output', () => {
     title: 'Military exercise', image: '', tone: -2, themes: ['MILITARY'],
     locations: [{ name: 'Cairo, Egypt', countryCode: 'EG', latitude: 30.0444, longitude: 31.2357 }],
   };
-  const conflictRow = (() => {
+  const conflictRowAt = (id, added) => {
     const f = Array.from({ length: 61 }, () => '');
-    f[0] = 'c1'; f[25] = '1'; f[26] = '190'; f[28] = '19'; f[29] = '4'; f[53] = 'SU';
-    f[59] = '20260730120000'; f[60] = 'https://example.com/c1';
+    f[0] = id; f[25] = '1'; f[26] = '190'; f[28] = '19'; f[29] = '4'; f[53] = 'SU';
+    f[59] = added; f[60] = `https://example.com/${id}`;
     return f.join('\t');
-  })();
+  };
+  const conflictRow = conflictRowAt('c1', '20260730120000');
   const files = (exportCsv) => [
     { descriptor: { kind: 'gkg', timestamp: '20260730120000' }, records: [gkgRecord] },
     { descriptor: { kind: 'export', timestamp: '20260730120000' }, csv: exportCsv },
@@ -156,5 +157,30 @@ describe('fetchMaterializedGdelt unrest output', () => {
     });
     assert.deepEqual(second._state.protests.events.map((r) => r.id).sort(), ['gdelt-protest-p1', 'gdelt-protest-p2']);
     assert.deepEqual(second._unrest.events.map((e) => e.title).sort(), ['Demonstration in Tehran, Iran', 'Strike in Tehran, Iran']);
+  });
+
+  it('keeps protest rows for 7 days (the map\'s 7d filter), conflict rows for 24h', async () => {
+    const day = 86_400_000;
+    const first = await fetchMaterializedGdelt({
+      _now: () => now,
+      _readSnapshot: async () => ({ cursor: {} }),
+      _fetchFiles: async () => files(csv(conflictRow, protestRow({ id: 'p1' }))),
+    });
+    const nextFile = (ts, nowMs, ids) => fetchMaterializedGdelt({
+      _now: () => nowMs,
+      _readSnapshot: async (key) => (key.includes('state') ? ids.state : { cursor: {} }),
+      _fetchFiles: async () => [
+        { descriptor: { kind: 'gkg', timestamp: ts }, records: [{ ...gkgRecord, id: `gkg-${ts}`, date: new Date(nowMs - 5 * 60_000).toISOString() }] },
+        { descriptor: { kind: 'export', timestamp: ts }, csv: csv(conflictRowAt(ids.conflict, ts), protestRow({ id: ids.protest, day: ts.slice(0, 8), added: ts })) },
+      ],
+    });
+
+    const threeDaysLater = await nextFile('20260802120000', now + 3 * day, { state: first._state, conflict: 'c2', protest: 'p2' });
+    assert.deepEqual(threeDaysLater._state.protests.events.map((r) => r.id).sort(), ['gdelt-protest-p1', 'gdelt-protest-p2']);
+    assert.deepEqual(threeDaysLater._state.conflict.events.map((e) => e.id), ['gdelt-event-c2'], 'conflict keeps 24h');
+    assert.equal(threeDaysLater._unrest.events.length, 2, 'one event per day at the same place');
+
+    const eightDaysLater = await nextFile('20260807120000', now + 8 * day, { state: threeDaysLater._state, conflict: 'c3', protest: 'p3' });
+    assert.deepEqual(eightDaysLater._state.protests.events.map((r) => r.id).sort(), ['gdelt-protest-p2', 'gdelt-protest-p3'], 'p1 aged out after 7 days');
   });
 });

@@ -54,6 +54,13 @@ const MAX_CATCHUP_FILES_PER_KIND = 8;
 const RECENT_GKG_WINDOW_MS = 2 * 60 * 60 * 1000;
 const GDELT_SNAPSHOT_INTERVAL_MS = 15 * 60 * 1000;
 const MAX_RECENT_GEO_RECORDS = 5_000;
+// Protest rows are kept for 7 days (conflict rows keep the shared 24h window),
+// so the map's 7d filter has a full week of GDELT protests to show. At the
+// observed ~11 usable rows per 15-minute export that is ~7,500 rows (~3 MB of
+// state); the cap leaves room for busy weeks. The state write goes through the
+// Redis REST proxy, whose request cap (32 MB) has to stay above the whole state.
+export const GDELT_PROTEST_WINDOW_MS = 7 * 86_400_000;
+export const GDELT_PROTEST_WINDOW_MAX_ROWS = 25_000;
 
 const INTEL_TTL = 86_400;
 const TIMELINE_TTL = 7 * 86_400;
@@ -426,7 +433,8 @@ export async function fetchMaterializedGdelt(deps = {}) {
 
   // Unrest comes from protest events in the same export (who / what / where per
   // event, see _gdelt-protest-events.mjs), not from GKG articles that merely
-  // mention a place. Rows are kept as a 24h rolling window like conflict events.
+  // mention a place. Rows are kept as a 7-day rolling window and regrouped into
+  // events on every run, so reports that arrive later still join their event.
   const protestWindow = exportBatches.length > 0
     ? mergeGdeltBulkRollingWindow(
         {
@@ -436,6 +444,7 @@ export async function fetchMaterializedGdelt(deps = {}) {
         },
         previousState?.protests,
         nowMs,
+        { windowMs: GDELT_PROTEST_WINDOW_MS, maxEvents: GDELT_PROTEST_WINDOW_MAX_ROWS },
       )
     : null;
   const protestsPayload = protestWindow

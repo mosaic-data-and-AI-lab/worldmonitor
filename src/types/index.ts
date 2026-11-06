@@ -720,6 +720,8 @@ export interface MapLayers {
   // across all other variants remain valid without touching them).
   storageFacilities?: boolean;
   fuelShortages?: boolean;
+  /** Hexagon density of conflict + unrest events (UCDP, ACLED, unrest feed). DeckGL only. */
+  eventDensity?: boolean;
   /** Live tanker positions (AIS ship type 80-89) inside chokepoint bboxes.
    *  Refreshed every 60s via getVesselSnapshot. Energy Atlas parity-push. */
   liveTankers?: boolean;

@@ -27,6 +27,7 @@ import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 import { renderPopupSourceLinks } from './map-popup-source-links';
+import type { DensityCell } from '@/services/event-density';
 import { overlayHistory, type OverlayCloseOrigin, type OverlayOpenHandle } from '@/utils/overlay-history';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
@@ -103,7 +104,7 @@ function fmtDelayMin(min: number | undefined): string {
   return `<span style="color:${min > 0 ? '#f97316' : '#22c55e'};font-size:calc(10px * var(--wm-panel-effective-scale, 1));margin-left:3px">${min > 0 ? '+' : ''}${min}m</span>`;
 }
 
-export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation';
+export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'eventDensity' | 'radiation';
 
 interface TechEventPopupData {
   id: string;
@@ -232,7 +233,7 @@ interface DatacenterClusterData {
 
 interface PopupData {
   type: PopupType;
-  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | RadiationObservation;
+  data: ConflictZone | Hotspot | Earthquake | WeatherAlert | MilitaryBase | StrategicWaterway | APTGroup | CyberThreat | NuclearFacility | EconomicCenter | GammaIrradiator | Pipeline | UnderseaCable | CableAdvisory | RepairShip | InternetOutage | AIDataCenter | AisDisruptionEvent | SocialUnrestEvent | AirportDelayAlert | PositionSample | MilitaryFlight | MilitaryVessel | MilitaryFlightCluster | MilitaryVesselCluster | NaturalEvent | Port | Spaceport | CriticalMineralProject | StartupHub | CloudRegion | TechHQ | Accelerator | TechEventPopupData | TechHQClusterData | TechEventClusterData | ProtestClusterData | DatacenterClusterData | TechHubActivity | GeoHubActivity | StockExchangePopupData | FinancialCenterPopupData | CentralBankPopupData | CommodityHubPopupData | IranEventPopupData | GpsJammingPopupData | DensityCell | RadiationObservation;
   relatedNews?: NewsItem[];
   x: number;
   y: number;
@@ -827,6 +828,8 @@ export class MapPopup {
         return this.renderIranEventPopup(data.data as IranEventPopupData);
       case 'gpsJamming':
         return this.renderGpsJammingPopup(data.data as GpsJammingPopupData);
+      case 'eventDensity':
+        return this.renderEventDensityPopup(data.data as DensityCell);
       case 'radiation':
         return this.renderRadiationPopup(data.data as RadiationObservation);
       default:
@@ -3663,6 +3666,95 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
             <span class="stat-value" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1))">${escapeHtml(data.h3)}</span>
           </div>
         </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Hotspot density cell: the events behind the hexagon, newest first, each
+   * linked to its original report when the feed gives one (GDELT unrest
+   * articles). ACLED and UCDP publish outlet names only, shown as text.
+   */
+  private renderEventDensityPopup(cell: DensityCell): string {
+    const sourceLabels: Record<string, string> = { ucdp: 'UCDP', acled: 'ACLED', gdelt: 'GDELT', rss: 'News' };
+    // Feeds without a title (UCDP, ACLED conflict) get one from their type.
+    const kindNames: Record<string, string> = {
+      'state-based': 'Armed conflict (state-based)',
+      'non-state': 'Armed clashes between non-state groups',
+      'one-sided': 'Violence against civilians',
+      conflict: 'Armed conflict',
+    };
+    const kindName = (kind: string): string => {
+      const label = kindNames[kind] ?? kind.replace(/^UNREST_EVENT_TYPE_/i, '').replace(/[_-]+/g, ' ').toLowerCase();
+      return label ? label[0]!.toUpperCase() + label.slice(1) : 'Event';
+    };
+    const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
+    const clip = (value: string, max: number): string => (value.length > max ? `${value.slice(0, max)}…` : value);
+    const limit = 15;
+    const events = cell.events ?? [];
+
+    const items = events.slice(0, limit).map((e) => {
+      const place = [...new Set([e.city, e.region, e.country].filter(Boolean))].join(', ');
+      // What happened, and where: "Demonstration in Paris, France".
+      const title = e.title || (place ? `${kindName(e.kind)} in ${place}` : kindName(e.kind));
+      // Who / against whom, without repeating the title's activity or the report count.
+      const head = title.split(/\s+in\s+/i)[0] ?? '';
+      let detail = (e.summary ?? '')
+        .replace(/\s*Reported in \d+ news articles?\.\s*/i, ' ')
+        .replace(/\s*Location known only to province level \([^)]*\)\.\s*/i, ' ')
+        .trim();
+      if (head && detail.toLowerCase().startsWith(head.toLowerCase())) detail = detail.slice(head.length);
+      detail = detail.replace(/^[\s.,;:]+/, '');
+      detail = detail ? detail[0]!.toUpperCase() + detail.slice(1) : '';
+      // When: GDELT gives the time the reports came in; ACLED and UCDP give the event's date only.
+      const when = e.source === 'gdelt'
+        ? `${new Date(e.time).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })} UTC`
+        : new Date(e.time).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+      const showPlace = place && !title.includes(e.city || e.country);
+      const meta = [
+        when,
+        showPlace ? place : '',
+        [e.source, ...(e.alsoIn ?? [])].map((s) => sourceLabels[s] ?? s).join(' + '),
+        e.reports ? plural(e.reports, 'news report') : '',
+        e.fatalities > 0 ? plural(e.fatalities, 'death') : '',
+      ].filter(Boolean).map((part) => escapeHtml(part)).join(' · ');
+      const urls = (e.urls ?? []).map((url) => sanitizeUrl(url)).filter((url): url is string => Boolean(url));
+      const links = urls.slice(0, 2).map((url) => {
+        let host = '';
+        try { host = new URL(url).hostname.replace(/^www\./, ''); } catch { host = t('popups.source'); }
+        return `<a class="popup-link cluster-source-link" href="${url}" target="_blank" rel="noopener noreferrer nofollow">${escapeHtml(host)}</a>`;
+      }).join(' · ') + (urls.length > 2 ? ` <span class="density-event-more">+${urls.length - 2}</span>` : '');
+      const sources = links || (e.sourceName ? escapeHtml(clip(e.sourceName, 60)) : '');
+      return `<li class="cluster-item density-event">`
+        + `<div class="density-event-title">${escapeHtml(clip(title, 90))}</div>`
+        + (detail ? `<div class="density-event-detail">${escapeHtml(clip(detail, 160))}</div>` : '')
+        + `<div class="density-event-meta">${meta}</div>`
+        + (sources ? `<div class="density-event-meta">${sources}</div>` : '')
+        + `</li>`;
+    }).join('');
+    const more = events.length > limit ? `<li class="cluster-more">+${events.length - limit} ${t('popups.moreEvents')}</li>` : '';
+
+    const totalReports = events.reduce((sum, e) => sum + (e.reports ?? 0), 0);
+    const deaths = Number(cell.fatalities) || 0;
+    const overview = [
+      Object.entries(cell.bySource ?? {}).map(([source, n]) => `${sourceLabels[source] ?? source} ${Number(n)}`).join(', '),
+      totalReports > 0 ? plural(totalReports, 'news report') : '',
+      deaths > 0 ? plural(deaths, 'death') : '',
+    ].filter(Boolean).map((part) => escapeHtml(part)).join(' · ');
+    const gdeltNote = events.some((e) => e.source === 'gdelt')
+      ? '<div class="cluster-note">GDELT entries are extracted automatically from news reports and are not verified.</div>'
+      : '';
+
+    return `
+      <div class="popup-header protest ${cell.count >= 10 ? 'high' : 'medium'} cluster">
+        <span class="popup-title">${escapeHtml(cell.topCountry || 'Event density')}</span>
+        <span class="popup-badge">${Number(cell.count)} ${t('popups.events').toUpperCase()}</span>
+        <button class="popup-close" aria-label="Close">×</button>
+      </div>
+      <div class="popup-body cluster-popup">
+        ${overview ? `<div class="density-event-meta density-overview">${overview}</div>` : ''}
+        <ul class="cluster-list">${items}${more}</ul>
+        ${gdeltNote}
       </div>
     `;
   }

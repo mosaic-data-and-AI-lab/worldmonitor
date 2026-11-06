@@ -1309,6 +1309,7 @@
         "flightDelays": "Aviation",
         "protests": "Protests",
         "ucdpEvents": "Armed Conflict Events",
+        "eventDensity": "Event Density",
         "displacementFlows": "Displacement Flows",
         "climateAnomalies": "Climate Anomalies",
         "weatherAlerts": "US Weather Alerts (NWS)",

@@ -69,6 +69,7 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   gulfQuotes: 'market:gulf-quotes:v1',
   stablecoinMarkets: 'market:stablecoins:v1',
   unrestEvents: 'unrest:events:v1',
+  gdeltConflictMap: 'gdelt:bulk:conflict-map-events:v1',
   iranEvents: 'conflict:iran-events:v1',
   ucdpEvents: 'conflict:ucdp-events-bootstrap:v1',
   temporalAnomalies: 'temporal:anomalies:v1',
@@ -205,6 +206,9 @@ const ON_DEMAND_KEY_NAMES = new Set([
   // string and gets registered as a duplicate key.
   'fxYoy', 'sharedFxRates',
   'marketCorrelationSeries',
+  // Located GDELT conflict events for the opt-in hotspot density layer, which
+  // reads them only while the ACLED conflict feed is empty.
+  'gdeltConflictMap',
 ]);
 
 /**

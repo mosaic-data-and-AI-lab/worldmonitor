@@ -12,6 +12,7 @@ const {
   fetchMaterializedGdelt,
   GDELT_BULK_ARTICLES_KEY,
   GDELT_BULK_CONFLICT_KEY,
+  GDELT_BULK_CONFLICT_MAP_KEY,
   GDELT_BULK_STATE_KEY,
   GDELT_BULK_UNREST_KEY,
   GDELT_INTEL_KEY,
@@ -43,6 +44,7 @@ function exportRow({
   id = 'event-1',
   timestamp = '20260730120000',
   country = 'SU',
+  located = false,
 }) {
   const fields = Array.from({ length: 61 }, () => '');
   fields[0] = id;
@@ -53,6 +55,16 @@ function exportRow({
   fields[53] = country;
   fields[59] = timestamp;
   fields[60] = `https://example.com/${id}`;
+  if (located) {
+    fields[1] = timestamp.slice(0, 8);
+    fields[33] = '3';
+    fields[34] = '-4';
+    fields[51] = '4';
+    fields[52] = 'Khartoum, Khartoum, Sudan';
+    fields[56] = '15.55';
+    fields[57] = '32.53';
+    fields[58] = '-3365261';
+  }
   return fields.join('\t');
 }
 
@@ -153,6 +165,21 @@ describe('seed-gdelt-bulk-materializer download boundaries', () => {
     );
     assert.equal(downloaded.find(({ descriptor }) => descriptor.kind === 'gkg').records[0].id, 'gkg-1');
     assert.equal(downloaded.find(({ descriptor }) => descriptor.kind === 'export').events[0].id, 'gdelt-event-event-1');
+  });
+
+  it('parses located protest and conflict rows from the export, since the raw CSV is not kept', async () => {
+    const exportTimestamp = '20260730120000';
+    const fixture = bulkFixture({
+      exportZip: storedZip(`${exportTimestamp}.export.CSV`, exportRow({ timestamp: exportTimestamp, located: true })),
+    });
+    const downloaded = await fetchGdeltBulkFiles({
+      fetchImpl: fakeBulkFetch(fixture.manifest, fixture.files),
+      nowMs: Date.parse('2026-07-30T12:05:00Z'),
+    });
+    const exportFile = downloaded.find(({ descriptor }) => descriptor.kind === 'export');
+    assert.equal('csv' in exportFile, false);
+    assert.deepEqual(exportFile.conflictRows.map((row) => row.id), ['gdelt-conflict-event-1']);
+    assert.deepEqual(exportFile.protests, []);
   });
 
   it('requires a partial-content manifest response', async () => {
@@ -604,9 +631,10 @@ describe('seed-gdelt-bulk-materializer fetch integration', () => {
       result._state.recentGkgBatches.flatMap(({ records: batchRecords }) => batchRecords).length,
       5_000,
     );
-    assert.equal(result._unrest.events.length, 1);
-    assert.equal(result._unrest.events[0].city, 'Alexandria');
-    assert.equal(result._unrest.events[0].tone, -2);
+    // Unrest now comes from protest events in the Events export
+    // (tests/gdelt-events-table.test.mjs), not from these GKG geo records;
+    // this cohort's export has no protest rows.
+    assert.deepEqual(result._unrest.events, []);
   });
 
   it('publishes only the established intel shape to the canonical key', () => {
@@ -642,6 +670,7 @@ describe('seed-gdelt-bulk-materializer publication cohort', () => {
     for (const key of [
       GDELT_BULK_CONFLICT_KEY,
       GDELT_BULK_UNREST_KEY,
+      GDELT_BULK_CONFLICT_MAP_KEY,
       GDELT_BULK_ARTICLES_KEY,
       POSITIVE_EVENTS_RPC_KEY,
       POSITIVE_EVENTS_BOOTSTRAP_KEY,
@@ -672,6 +701,7 @@ describe('seed-gdelt-bulk-materializer publication cohort', () => {
       ]),
       { key: GDELT_BULK_CONFLICT_KEY, ttlSeconds: 6 * 60 * 60 },
       { key: GDELT_BULK_UNREST_KEY, ttlSeconds: 4.5 * 60 * 60 },
+      { key: GDELT_BULK_CONFLICT_MAP_KEY, ttlSeconds: 6 * 60 * 60 },
       { key: GDELT_BULK_ARTICLES_KEY, ttlSeconds: 2 * 86_400 },
       { key: POSITIVE_EVENTS_RPC_KEY, ttlSeconds: 3 * 60 * 60 },
       { key: POSITIVE_EVENTS_BOOTSTRAP_KEY, ttlSeconds: 3 * 60 * 60 },

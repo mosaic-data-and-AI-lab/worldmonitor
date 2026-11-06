@@ -24,11 +24,18 @@ import {
   mapGdeltExportToConflictEvents,
   mergeGdeltBulkRollingWindow,
 } from './_conflict-gdelt-bulk.mjs';
+import {
+  buildGdeltConflictEvents,
+  buildGdeltProtestEvents,
+  mapGdeltExportToConflictRows,
+  mapGdeltExportToProtestRows,
+} from './_gdelt-events-table.mjs';
 export {
   GDELT_INTEL_KEY,
   GDELT_BULK_STATE_KEY,
   GDELT_BULK_CONFLICT_KEY,
   GDELT_BULK_UNREST_KEY,
+  GDELT_BULK_CONFLICT_MAP_KEY,
   GDELT_BULK_ARTICLES_KEY,
   POSITIVE_EVENTS_RPC_KEY,
   POSITIVE_EVENTS_BOOTSTRAP_KEY,
@@ -38,6 +45,7 @@ import {
   GDELT_BULK_STATE_KEY,
   GDELT_BULK_CONFLICT_KEY,
   GDELT_BULK_UNREST_KEY,
+  GDELT_BULK_CONFLICT_MAP_KEY,
   GDELT_BULK_ARTICLES_KEY,
   POSITIVE_EVENTS_RPC_KEY,
   POSITIVE_EVENTS_BOOTSTRAP_KEY,
@@ -53,6 +61,14 @@ const MAX_CATCHUP_FILES_PER_KIND = 8;
 const RECENT_GKG_WINDOW_MS = 2 * 60 * 60 * 1000;
 const GDELT_SNAPSHOT_INTERVAL_MS = 15 * 60 * 1000;
 const MAX_RECENT_GEO_RECORDS = 5_000;
+// Located protest and conflict rows are kept for 7 days (the country-level
+// conflict rows behind the forecast keep the shared 24h window), so the map's
+// 7d filter has a full week of GDELT events to show. At the
+// observed ~11 usable rows per 15-minute export that is ~7,500 rows (~3 MB of
+// state); the cap leaves room for busy weeks. The state write goes through the
+// Redis REST proxy, whose request cap (32 MB) has to stay above the whole state.
+export const GDELT_PROTEST_WINDOW_MS = 7 * 86_400_000;
+export const GDELT_PROTEST_WINDOW_MAX_ROWS = 25_000;
 
 const INTEL_TTL = 86_400;
 const TIMELINE_TTL = 7 * 86_400;
@@ -199,7 +215,12 @@ export async function fetchGdeltBulkFiles({
       const csv = extractGdeltBulkCsv(zip, descriptor);
       return descriptor.kind === 'gkg'
         ? { descriptor, records: parseGdeltGkgCsv(csv) }
-        : { descriptor, events: mapGdeltExportToConflictEvents(csv) };
+        : {
+            descriptor,
+            events: mapGdeltExportToConflictEvents(csv),
+            protests: mapGdeltExportToProtestRows(csv),
+            conflictRows: mapGdeltExportToConflictRows(csv),
+          };
     },
   );
   return downloaded;
@@ -379,9 +400,11 @@ export async function fetchMaterializedGdelt(deps = {}) {
 
   const exportBatches = downloaded
     .filter(({ descriptor }) => descriptor.kind === 'export')
-    .map(({ descriptor, events, csv }) => ({
+    .map(({ descriptor, events, protests, conflictRows, csv }) => ({
       timestamp: descriptor.timestamp,
       events: events ?? mapGdeltExportToConflictEvents(csv),
+      protests: protests ?? (csv ? mapGdeltExportToProtestRows(csv) : []),
+      conflictRows: conflictRows ?? (csv ? mapGdeltExportToConflictRows(csv) : []),
     }));
   const latestExport = exportBatches.map(({ timestamp }) => timestamp).sort().at(-1);
   const oldestExport = exportBatches.map(({ timestamp }) => timestamp).sort().at(0);
@@ -422,10 +445,41 @@ export async function fetchMaterializedGdelt(deps = {}) {
     throw new Error('GDELT bulk materializer has no conflict export data');
   }
 
+  // Unrest comes from protest events in the same export (who / what / where per
+  // event, see _gdelt-events-table.mjs), not from GKG articles that merely
+  // mention a place. Located conflict events for the map come from the same
+  // file. Rows are kept as 7-day rolling windows and regrouped into events on
+  // every run, so reports that arrive later still join their event.
+  const weekWindow = (key, previous) => {
+    if (exportBatches.length === 0) return previous ?? null;
+    const window = mergeGdeltBulkRollingWindow(
+      {
+        events: exportBatches.flatMap((batch) => batch[key]),
+        oldestExportTimestamp: oldestExport,
+        exportTimestamp: latestExport,
+      },
+      previous,
+      nowMs,
+      { windowMs: GDELT_PROTEST_WINDOW_MS, maxEvents: GDELT_PROTEST_WINDOW_MAX_ROWS },
+    );
+    return {
+      events: window.events,
+      source: 'gdelt-bulk',
+      pagination: {
+        exportTimestamp: latestExport,
+        oldestExportTimestamp: oldestExport,
+        rollingWindowStartedAt: window.rollingWindowStartedAt,
+      },
+    };
+  };
+  const protestsPayload = weekWindow('protests', previousState?.protests);
+  const conflictRowsPayload = weekWindow('conflictRows', previousState?.conflictRows);
+
   return {
     ...materialized.intel,
     _timelines: materialized.timelines,
-    _unrest: materialized.unrest,
+    _unrest: { events: buildGdeltProtestEvents(protestsPayload?.events ?? []), fetchedAt: nowMs },
+    _conflictMap: { events: buildGdeltConflictEvents(conflictRowsPayload?.events ?? []), fetchedAt: nowMs },
     _positive: materialized.positive,
     _reference: materialized.reference,
     _conflict: conflictPayload,
@@ -446,6 +500,8 @@ export async function fetchMaterializedGdelt(deps = {}) {
       timelines: materialized.timelines,
       reference: materialized.reference,
       conflict: conflictPayload,
+      protests: protestsPayload,
+      conflictRows: conflictRowsPayload,
       coverage,
       updatedAt: nowMs,
     },
@@ -503,6 +559,10 @@ export async function afterPublish(data, _meta, deps = {}) {
     {
       label: GDELT_BULK_UNREST_KEY,
       run: () => _writeExtraKey(GDELT_BULK_UNREST_KEY, data._unrest, UNREST_TTL),
+    },
+    {
+      label: GDELT_BULK_CONFLICT_MAP_KEY,
+      run: () => _writeExtraKey(GDELT_BULK_CONFLICT_MAP_KEY, data._conflictMap, CONFLICT_TTL),
     },
     {
       label: GDELT_BULK_ARTICLES_KEY,
@@ -591,6 +651,7 @@ export const RUN_SEED_OPTS = {
     ]),
     { key: GDELT_BULK_CONFLICT_KEY, ttlSeconds: CONFLICT_TTL },
     { key: GDELT_BULK_UNREST_KEY, ttlSeconds: UNREST_TTL },
+    { key: GDELT_BULK_CONFLICT_MAP_KEY, ttlSeconds: CONFLICT_TTL },
     { key: GDELT_BULK_ARTICLES_KEY, ttlSeconds: ARTICLES_TTL },
     { key: POSITIVE_EVENTS_RPC_KEY, ttlSeconds: POSITIVE_TTL },
     { key: POSITIVE_EVENTS_BOOTSTRAP_KEY, ttlSeconds: POSITIVE_TTL },

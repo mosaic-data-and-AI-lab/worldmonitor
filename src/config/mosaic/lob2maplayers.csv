@@ -17,6 +17,7 @@ tradeRoutes,avail,,ON,avail,avail,,,avail
 flights,avail,,,,,,,avail
 protests,ON,,ON,,avail,,,avail
 ucdpEvents,ON,,ON,,,,,
+eventDensity,ON,,,,,,,
 displacement,avail,,ON,,,,avail,
 climate,,,avail,avail,,,ON,avail
 weather,,,,,,,ON,ON

@@ -188,8 +188,11 @@ function eventAddedAt(event, fallbackTimestamp) {
   return gdeltTimestampToMs(fallbackTimestamp);
 }
 
-export function mergeGdeltBulkRollingWindow(bulk, previousSnapshot, nowMs = Date.now()) {
-  const cutoff = nowMs - GDELT_ROLLING_WINDOW_MS;
+export function mergeGdeltBulkRollingWindow(bulk, previousSnapshot, nowMs = Date.now(), {
+  windowMs = GDELT_ROLLING_WINDOW_MS,
+  maxEvents = GDELT_ROLLING_WINDOW_MAX_EVENTS,
+} = {}) {
+  const cutoff = nowMs - windowMs;
   const previousIsBulk = previousSnapshot?.source === 'gdelt-bulk'
     && Array.isArray(previousSnapshot.events);
   const previousExportTimestamp = previousSnapshot?.pagination?.exportTimestamp;
@@ -229,7 +232,7 @@ export function mergeGdeltBulkRollingWindow(bulk, previousSnapshot, nowMs = Date
   const rollingWindowStartedAt = Math.max(cutoff, earliestCoverage);
   const events = [...byId.values()]
     .sort((a, b) => b.gdeltAddedAt - a.gdeltAddedAt)
-    .slice(0, GDELT_ROLLING_WINDOW_MAX_EVENTS);
+    .slice(0, maxEvents);
 
   return {
     events,

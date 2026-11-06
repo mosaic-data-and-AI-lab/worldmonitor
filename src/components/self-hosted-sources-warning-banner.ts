@@ -7,8 +7,9 @@
  *
  * Blocking full-screen modal in front of the whole dashboard (all panels) —
  * no backdrop-click or Escape dismiss, only the explicit acknowledgment
- * button, so it can't be missed. Reappears each fresh browser session
- * (sessionStorage), matching payment-failure-banner.ts's dismiss convention.
+ * button, so it can't be missed. Shown once per browser: the acknowledgment
+ * is kept in localStorage. Change DISMISS_KEY to show it to everyone again
+ * (e.g. after the source review changes what the notice says).
  */
 
 import { isSelfHostedPremiumUnlocked } from '@/services/self-hosted-unlock';
@@ -23,7 +24,7 @@ export function initSelfHostedSourcesWarningBanner(): void {
   if (document.getElementById(OVERLAY_ID)) return;
 
   try {
-    if (sessionStorage.getItem(DISMISS_KEY) === '1') return;
+    if (localStorage.getItem(DISMISS_KEY) === '1') return;
   } catch { /* noop */ }
 
   const lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -76,7 +77,7 @@ export function initSelfHostedSourcesWarningBanner(): void {
   const close = (): void => {
     document.removeEventListener('keydown', onKeydown, true);
     overlay.remove();
-    try { sessionStorage.setItem(DISMISS_KEY, '1'); } catch { /* noop */ }
+    try { localStorage.setItem(DISMISS_KEY, '1'); } catch { /* noop */ }
     lastFocusedElement?.focus?.();
   };
 

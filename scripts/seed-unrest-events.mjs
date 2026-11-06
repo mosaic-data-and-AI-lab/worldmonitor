@@ -106,6 +106,17 @@ function mergeSourceUrls(...groups) {
 
 // ---------- Deduplication (from _shared.ts) ----------
 
+// Same place (~11 km), same day and same kind of unrest = one event. The kind
+// keeps a strike and a riot in one city on one day apart, while ACLED and GDELT
+// reports of the same event still merge (ACLED wins, every source's links kept).
+const DEDUPE_KIND = {
+  UNREST_EVENT_TYPE_PROTEST: 'protest',
+  UNREST_EVENT_TYPE_DEMONSTRATION: 'protest',
+  UNREST_EVENT_TYPE_RIOT: 'riot',
+  UNREST_EVENT_TYPE_STRIKE: 'strike',
+  UNREST_EVENT_TYPE_CIVIL_UNREST: 'unrest',
+};
+
 function deduplicateEvents(events) {
   const unique = new Map();
   for (const event of events) {
@@ -114,7 +125,7 @@ function deduplicateEvents(events) {
     const latKey = Math.round(lat * 10) / 10;
     const lonKey = Math.round(lon * 10) / 10;
     const dateKey = new Date(event.occurredAt).toISOString().split('T')[0];
-    const key = `${latKey}:${lonKey}:${dateKey}`;
+    const key = `${latKey}:${lonKey}:${dateKey}:${DEDUPE_KIND[event.eventType] ?? 'protest'}`;
 
     const existing = unique.get(key);
     if (!existing) {

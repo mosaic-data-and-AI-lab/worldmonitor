@@ -135,7 +135,7 @@ export class KasperskyCyberPanel extends Panel {
     const cls = change > 0 ? 'kc-up' : 'kc-down';
     const bars = joinSafeHtml(trend.map(p => safeHtml`
       <div class="kc-spark-col" title="${p.date}: ${p.count.toLocaleString()}">
-        <span class="kc-spark-bar" style="height:${Math.max(4, Math.round((p.count / max) * 100))}%"></span>
+        <span class="kc-spark-track"><span class="kc-spark-bar" style="height:${Math.max(4, Math.round((p.count / max) * 100))}%"></span></span>
         <span class="kc-spark-label">${p.date.replace(/^[A-Za-z]+-/, '')}</span>
       </div>`));
     return safeHtml`

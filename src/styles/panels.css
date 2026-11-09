@@ -3882,7 +3882,12 @@ a.hub-top-story {
 .kc-toggle:hover { background: var(--surface-hover); }
 .kc-threats { margin: 0; padding-left: 1.6em; }
 .kc-threats li { display: flex; justify-content: space-between; gap: 8px; padding: 1px 0; }
-.kc-threat-name { font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; }
+.kc-threat-name { font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; color: var(--text); text-decoration: none; }
+.kc-threat-name:hover, .kc-threat-name:focus-visible { color: var(--accent); text-decoration: underline; }
 .kc-threat-pct { color: var(--text-dim); }
+.kc-daily { margin-top: 6px; color: var(--text-secondary); }
+.kc-daily strong { color: var(--text); }
+.kc-bar-volume { background: var(--semantic-info); }
+.kc-note { color: var(--text-faint); font-size: 0.85em; }
 .kc-footer { color: var(--text-faint); font-size: 0.85em; }
 .kc-footer a { color: var(--text-dim); }

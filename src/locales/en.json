@@ -2017,7 +2017,7 @@
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
     },
     "kasperskyCyber": {
-      "infoTooltip": "<strong>Cyber Threat Landscape</strong> Weekly country rankings from the Kaspersky Cyberthreat Real-Time Map: the share of Kaspersky Security Network users in each country who hit a detection, per detection type (local infections, web threats, intrusions, ransomware, spam). Includes the global 7-day detection trend and top malware families. Telemetry reflects the Kaspersky install base, so countries with low Kaspersky adoption (e.g. the US) under-report, and small countries can rank high on small samples."
+      "infoTooltip": "<strong>Cyber Threat Landscape</strong> Weekly country rankings from the Kaspersky Cyberthreat Real-Time Map: the share of Kaspersky Security Network users in each country who hit a detection, per detection type (local infections, web threats, intrusions, ransomware, spam). Also shows the global 7-day trend, a daily snapshot of detections with a per-second average (Kaspersky publishes it a day or two late), the countries with the most detections that day, and the top malware families (each links to its Kaspersky Threats page). Telemetry reflects the Kaspersky install base: Kaspersky does not publish the US or Taiwan at all, countries with many Kaspersky users dominate raw counts, and small countries can rank high on small samples."
     },
     "bigmac": {
       "infoTooltip": "<strong>Real Big Mac Index</strong> The Economist's Big Mac Index measures purchasing power parity by comparing McDonald's burger prices across countries. Updated when new data is published (quarterly/annually)."
